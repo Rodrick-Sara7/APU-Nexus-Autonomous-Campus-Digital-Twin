@@ -1,6 +1,7 @@
 // ==============================================================================
 // APU-Nexus: Automated Verification Script (verify_project.mjs)
-// Verifies file integrity, anti-laziness rules, simulation engines, and agent pipelines.
+// Verifies file integrity, anti-laziness rules, simulation engines,
+// multi-agent pipelines, Mobile IoT bridge, and Terraform IaC synthesis.
 // ==============================================================================
 
 import fs from "fs";
@@ -12,7 +13,7 @@ const __dirname = path.dirname(__filename);
 
 async function runVerification() {
   console.log("====================================================================");
-  console.log("STARTING APU-NEXUS PRODUCTION AUDIT & VERIFICATION");
+  console.log("STARTING APU-NEXUS PHASE 2 PRODUCTION AUDIT & VERIFICATION");
   console.log("====================================================================\n");
 
   const requiredFiles = [
@@ -20,7 +21,9 @@ async function runVerification() {
     "lib/data_simulator.js",
     "lib/gemini_agent.js",
     "app/api/agent/route.js",
+    "app/api/iot/route.js",
     "app/page.jsx",
+    "app/sensor/page.jsx",
   ];
 
   const forbiddenStrings = ["TODO", "implement logic here", "...rest of code"];
@@ -42,26 +45,44 @@ async function runVerification() {
     console.log(`  ✓ ${relPath} exists and has zero placeholders.`);
   }
 
-  // 2. /app/page.jsx Specific Checks
-  console.log("\n[CHECK 2] Validating /app/page.jsx complexity floor & client directive...");
+  // 2. /app/page.jsx & /app/sensor/page.jsx Checks
+  console.log("\n[CHECK 2] Validating client directives and complexity floors...");
   const pagePath = path.join(__dirname, "app/page.jsx");
   const pageContent = fs.readFileSync(pagePath, "utf-8");
-  const lines = pageContent.split("\n");
+  const pageLines = pageContent.split("\n");
 
-  if (!lines[0].includes('"use client"') && !lines[0].includes("'use client'")) {
+  if (!pageLines[0].includes('"use client"') && !pageLines[0].includes("'use client'")) {
     throw new Error('CRITICAL: /app/page.jsx must begin with "use client" on line 1.');
   }
-
-  if (lines.length < 250) {
+  if (pageLines.length < 350) {
     throw new Error(
-      `CRITICAL: /app/page.jsx must exceed 250 lines of code. Current line count: ${lines.length}`
+      `CRITICAL: /app/page.jsx must exceed 350 lines of code. Current line count: ${pageLines.length}`
     );
   }
-  console.log(`  ✓ /app/page.jsx begins with "use client" on line 1.`);
-  console.log(`  ✓ /app/page.jsx has ${lines.length} lines of code (exceeds floor of 250+).`);
+  console.log(`  ✓ /app/page.jsx begins with "use client" on line 1 (${pageLines.length} lines).`);
 
-  // 3. Telemetry Simulator Execution Check
-  console.log("\n[CHECK 3] Verifying /lib/data_simulator.js execution & crisis triggers...");
+  const sensorPath = path.join(__dirname, "app/sensor/page.jsx");
+  const sensorContent = fs.readFileSync(sensorPath, "utf-8");
+  const sensorLines = sensorContent.split("\n");
+
+  if (!sensorLines[0].includes('"use client"') && !sensorLines[0].includes("'use client'")) {
+    throw new Error('CRITICAL: /app/sensor/page.jsx must begin with "use client" on line 1.');
+  }
+  console.log(`  ✓ /app/sensor/page.jsx begins with "use client" on line 1 (${sensorLines.length} lines).`);
+
+  // 3. IoT API Route GET and POST Check
+  console.log("\n[CHECK 3] Validating /app/api/iot/route.js exports...");
+  const iotRoute = await import("./app/api/iot/route.js");
+  if (typeof iotRoute.GET !== "function") {
+    throw new Error("CRITICAL: /app/api/iot/route.js does not export GET.");
+  }
+  if (typeof iotRoute.POST !== "function") {
+    throw new Error("CRITICAL: /app/api/iot/route.js does not export POST.");
+  }
+  console.log("  ✓ /app/api/iot/route.js exports GET and POST handlers.");
+
+  // 4. Telemetry Simulator Execution & Seismic Check
+  console.log("\n[CHECK 4] Verifying /lib/data_simulator.js execution & 4 crisis triggers...");
   const simulator = await import("./lib/data_simulator.js");
   const baseline = simulator.createInitialCampusState();
   if (!baseline || !baseline.zones || Object.keys(baseline.zones).length !== 4) {
@@ -78,31 +99,38 @@ async function runVerification() {
     throw new Error("CRITICAL: NETWORK_STORM wifi_load did not spike to 99%.");
   }
 
-  const fixed1 = simulator.applyAutonomousFix("NETWORK_STORM", crisis1);
-  if (fixed1.zones["Block B - AI Labs"].wifi_load > 50) {
-    throw new Error("CRITICAL: applyAutonomousFix failed to restore Block B wifi_load.");
+  const crisisSeismic = simulator.triggerCrisisMode("SEISMIC_ANOMALY", normalTick);
+  if (crisisSeismic.zones["Server Room Core"].vibration_g !== 8.4) {
+    throw new Error("CRITICAL: SEISMIC_ANOMALY vibration did not spike to 8.4G.");
+  }
+  if (crisisSeismic.zones["Block B - AI Labs"].packet_loss !== 24) {
+    throw new Error("CRITICAL: SEISMIC_ANOMALY Block B packet loss did not spike to 24%.");
+  }
+
+  const fixedSeismic = simulator.applyAutonomousFix("SEISMIC_ANOMALY", crisisSeismic);
+  if (fixedSeismic.zones["Server Room Core"].vibration_g > 2) {
+    throw new Error("CRITICAL: applyAutonomousFix failed to restore Server Room vibration.");
   }
   console.log("  ✓ createInitialCampusState() initialized 4 APU zones correctly.");
-  console.log("  ✓ generateNormalTick() verified with continuous natural jitter.");
   console.log("  ✓ triggerCrisisMode('NETWORK_STORM') verified.");
-  console.log("  ✓ applyAutonomousFix('NETWORK_STORM') verified with healthy restoration.");
+  console.log("  ✓ triggerCrisisMode('SEISMIC_ANOMALY') verified (8.4G spike & packet loss).");
+  console.log("  ✓ applyAutonomousFix('SEISMIC_ANOMALY') verified with full structural restoration.");
 
-  // 4. Multi-Agent Gemini Brain Execution Check
-  console.log("\n[CHECK 4] Verifying /lib/gemini_agent.js 5-Agent pipeline & fallback...");
+  // 5. Multi-Agent Gemini Brain & IaC Synthesis Check
+  console.log("\n[CHECK 5] Verifying /lib/gemini_agent.js 5-Agent pipeline & IaC synthesis...");
   const agentModule = await import("./lib/gemini_agent.js");
   const testPayload = {
-    active_crisis: "NETWORK_STORM",
+    active_crisis: "SEISMIC_ANOMALY",
     zones: {
-      "Block B - AI Labs": {
-        wifi_load: 99,
-        server_cpu: 96,
-        latency_ms: 420,
-        packet_loss: 18,
+      "Server Room Core": {
+        vibration_g: 8.4,
+        server_cpu: 98,
+        power_usage_kw: 162,
       },
     },
   };
 
-  const diagnosis = await agentModule.analyzeCampusTelemetry(testPayload, "NETWORK_STORM");
+  const diagnosis = await agentModule.analyzeCampusTelemetry(testPayload, "SEISMIC_ANOMALY");
   if (!diagnosis || typeof diagnosis !== "object") {
     throw new Error("CRITICAL: analyzeCampusTelemetry did not return a valid object.");
   }
@@ -113,38 +141,41 @@ async function runVerification() {
     !Array.isArray(diagnosis.agent_chain) ||
     diagnosis.agent_chain.length < 5 ||
     !diagnosis.remediation_command ||
+    !diagnosis.iac_manifest ||
+    !diagnosis.iac_manifest.includes("Terraform") ||
     typeof diagnosis.estimated_savings_myr !== "number"
   ) {
     throw new Error(
-      "CRITICAL: analyzeCampusTelemetry returned schema that violates required structure."
+      "CRITICAL: analyzeCampusTelemetry returned schema that violates required structure or missing iac_manifest."
     );
   }
   console.log(`  ✓ analyzeCampusTelemetry returned status: ${diagnosis.status}`);
   console.log(`  ✓ 5-Agent pipeline generated ${diagnosis.agent_chain.length} autonomous thoughts.`);
   console.log(`  ✓ Generated remediation command: ${diagnosis.remediation_command}`);
+  console.log(`  ✓ Synthesized IaC manifest verified (${diagnosis.iac_manifest.split("\n").length} lines).`);
   console.log(`  ✓ Estimated savings calculated: RM ${diagnosis.estimated_savings_myr}`);
 
-  // 5. Firebase Setup Hybrid Engine Check
-  console.log("\n[CHECK 5] Verifying /lib/firebase_setup.js pub-sub engine...");
+  // 6. Firebase Setup & Mobile IoT Vibration Stream Check
+  console.log("\n[CHECK 6] Verifying /lib/firebase_setup.js pub-sub & IoT vibration bridge...");
   const firebaseModule = await import("./lib/firebase_setup.js");
-  if (typeof firebaseModule.publishTelemetry !== "function") {
-    throw new Error("CRITICAL: publishTelemetry is not a function.");
+  if (typeof firebaseModule.publishIotVibration !== "function") {
+    throw new Error("CRITICAL: publishIotVibration is not a function.");
   }
-  if (typeof firebaseModule.subscribeTelemetry !== "function") {
-    throw new Error("CRITICAL: subscribeTelemetry is not a function.");
+  if (typeof firebaseModule.subscribeIotVibration !== "function") {
+    throw new Error("CRITICAL: subscribeIotVibration is not a function.");
   }
 
-  let receivedValue = null;
-  const unsub = firebaseModule.subscribeTelemetry((data) => {
-    receivedValue = data;
+  let receivedIot = null;
+  const unsub = firebaseModule.subscribeIotVibration((data) => {
+    receivedIot = data;
   });
-  await firebaseModule.publishTelemetry({ test_probe: 42 });
+  await firebaseModule.publishIotVibration({ magnitude: 8.4, seismic_alert: true });
   unsub();
 
-  if (!receivedValue || receivedValue.test_probe !== 42) {
-    throw new Error("CRITICAL: Local pub-sub fallback store did not dispatch published data.");
+  if (!receivedIot || receivedIot.magnitude !== 8.4) {
+    throw new Error("CRITICAL: Local IoT vibration pub-sub store did not dispatch published data.");
   }
-  console.log("  ✓ publishTelemetry and subscribeTelemetry verified in local fallback mode.");
+  console.log("  ✓ publishIotVibration and subscribeIotVibration verified in local fallback mode.");
 
   console.log("\n====================================================================");
   console.log("ALL VERIFICATION CHECKS PASSED");

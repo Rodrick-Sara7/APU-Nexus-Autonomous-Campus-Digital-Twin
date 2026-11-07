@@ -5,6 +5,9 @@
 .npm/
 .gemini
 .system_generated/
+.gitconfig
+image.png
+upload/
 
 # dependencies
 /node_modules

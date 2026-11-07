@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useRef, useCallback } from "react";
+import Link from "next/link";
 import {
   Activity,
   Server,
@@ -27,6 +28,11 @@ import {
   ChevronRight,
   Sliders,
   Check,
+  Smartphone,
+  MapPin,
+  FileCode,
+  Copy,
+  ExternalLink,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -50,6 +56,7 @@ import {
   isFirebaseLive,
   publishTelemetry,
   subscribeTelemetry,
+  subscribeIotVibration,
 } from "@/lib/firebase_setup";
 
 export default function APUNexusDashboard() {
@@ -63,7 +70,29 @@ export default function APUNexusDashboard() {
   const [selectedMetric, setSelectedMetric] = useState("all");
   const [terminalLogs, setTerminalLogs] = useState([]);
   const [currentDiagnosis, setCurrentDiagnosis] = useState(null);
+  const [activeInspectorTab, setActiveInspectorTab] = useState("logs"); // "logs" | "iac"
+  const [copiedIaC, setCopiedIaC] = useState(false);
+  const [mobileIotData, setMobileIotData] = useState({
+    x: 0.0,
+    y: 0.0,
+    z: 9.81,
+    magnitude: 1.0,
+    seismic_alert: false,
+    device_connected: false,
+    last_updated: null,
+    source: "idle",
+  });
+
   const [auditLog, setAuditLog] = useState([
+    {
+      id: "AUD-902",
+      timestamp: "10:14:22 AM",
+      zone: "Server Room Core",
+      crisis: "Structural Seismic Spike (8.4G)",
+      remediation: "Breaker isolated; DR instance group deployed in asia-southeast1-b",
+      savings: "RM 1,850",
+      status: "RESOLVED",
+    },
     {
       id: "AUD-901",
       timestamp: "10:02:14 AM",
@@ -141,10 +170,10 @@ export default function APUNexusDashboard() {
 
   // Keep terminal scrolled
   useEffect(() => {
-    if (logsEndRef.current) {
+    if (logsEndRef.current && activeInspectorTab === "logs") {
       logsEndRef.current.scrollIntoView({ behavior: "smooth" });
     }
-  }, [terminalLogs]);
+  }, [terminalLogs, activeInspectorTab]);
 
   // Autonomous Healing Workflow orchestrator
   const handleTriggerAnalysisAndHeal = useCallback(
@@ -266,35 +295,92 @@ export default function APUNexusDashboard() {
   }, []);
 
   // Trigger Crisis Mode handler
-  const handleTriggerCrisis = (type) => {
-    if (isRemediating) return;
-    const crisisState = triggerCrisisMode(type, campusState);
-    setCampusState(crisisState);
-    publishTelemetry(crisisState);
+  const handleTriggerCrisis = useCallback(
+    (type) => {
+      if (isRemediating) return;
+      const crisisState = triggerCrisisMode(type, campusState);
+      setCampusState(crisisState);
+      publishTelemetry(crisisState);
 
-    appendLog(
-      `CRISIS INJECTED: ${type} across ${
+      const affected =
         type === "NETWORK_STORM"
           ? "Block B - AI Labs"
           : type === "IOT_THERMAL_RUNAWAY"
           ? "Server Room Core"
-          : "APU Library Level 2"
-      }.`,
-      "CRITICAL"
-    );
+          : type === "ENERGY_WASTE_ANOMALY"
+          ? "APU Library Level 2"
+          : "Server Room Core (Seismic Vibration 8.4G)";
 
-    if (autoHealRef.current) {
-      appendLog("Auto-Heal Mode: ON. Engaging 5-Agent pipeline in 1.2s...", "SYSTEM");
-      setTimeout(() => {
-        handleTriggerAnalysisAndHeal(type, crisisState);
-      }, 1200);
-    } else {
-      appendLog(
-        "Auto-Heal Mode: OFF. Awaiting manual administrator remediation command.",
-        "WARN"
-      );
-    }
-  };
+      appendLog(`CRISIS INJECTED: ${type} across ${affected}.`, "CRITICAL");
+
+      if (autoHealRef.current) {
+        appendLog("Auto-Heal Mode: ON. Engaging 5-Agent pipeline in 1.2s...", "SYSTEM");
+        setTimeout(() => {
+          handleTriggerAnalysisAndHeal(type, crisisState);
+        }, 1200);
+      } else {
+        appendLog(
+          "Auto-Heal Mode: OFF. Awaiting manual administrator remediation command.",
+          "WARN"
+        );
+      }
+    },
+    [isRemediating, campusState, appendLog, handleTriggerAnalysisAndHeal]
+  );
+
+  // Cross-device Mobile IoT polling & auto-trigger
+  useEffect(() => {
+    const pollIotBridge = async () => {
+      try {
+        const res = await fetch("/api/iot", { cache: "no-store" });
+        if (res.ok) {
+          const data = await res.json();
+          setMobileIotData(data);
+
+          // If mobile phone triggers a seismic spike, automatically trigger crisis
+          if (
+            data.seismic_alert &&
+            !isRemediating &&
+            stateRef.current.active_crisis !== CRISIS_TYPES.SEISMIC_ANOMALY
+          ) {
+            appendLog(
+              `[MOBILE IOT ALERT]: Critical vibration (${data.magnitude}G) received from ${data.source}.`,
+              "CRITICAL"
+            );
+            handleTriggerCrisis(CRISIS_TYPES.SEISMIC_ANOMALY);
+          }
+        }
+      } catch {
+        // Ignore network polling glitches
+      }
+    };
+
+    pollIotBridge();
+    const interval = setInterval(pollIotBridge, 1000);
+
+    // Also attach Firebase pub-sub subscriber
+    const unsubIot = subscribeIotVibration((data) => {
+      if (data) {
+        setMobileIotData(data);
+        if (
+          data.seismic_alert &&
+          !isRemediating &&
+          stateRef.current.active_crisis !== CRISIS_TYPES.SEISMIC_ANOMALY
+        ) {
+          appendLog(
+            `[MOBILE IOT RTDB]: Seismic spike (${data.magnitude}G) received from live stream.`,
+            "CRITICAL"
+          );
+          handleTriggerCrisis(CRISIS_TYPES.SEISMIC_ANOMALY);
+        }
+      }
+    });
+
+    return () => {
+      clearInterval(interval);
+      if (typeof unsubIot === "function") unsubIot();
+    };
+  }, [isRemediating, appendLog, handleTriggerCrisis]);
 
   // Manual Remediation Execution
   const handleManualRemediate = () => {
@@ -314,10 +400,33 @@ export default function APUNexusDashboard() {
     appendLog("Campus infrastructure reset to nominal baseline state.", "INFO");
   };
 
+  const handleCopyIaC = () => {
+    const manifest =
+      currentDiagnosis?.iac_manifest ||
+      `# Terraform: APU-Nexus Campus Cloud Baseline Infrastructure
+resource "google_compute_network" "apu_mesh_vpc" {
+  name                    = "apu-campus-mesh-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "apu_edge_subnets" {
+  name          = "apu-asia-se1-subnet"
+  ip_cidr_range = "10.10.0.0/16"
+  region        = "asia-southeast1"
+  network       = google_compute_network.apu_mesh_vpc.id
+}`;
+    if (navigator?.clipboard) {
+      navigator.clipboard.writeText(manifest);
+      setCopiedIaC(true);
+      setTimeout(() => setCopiedIaC(false), 2000);
+    }
+  };
+
   const currentZoneData =
     campusState.zones[selectedZone] || campusState.zones["Block B - AI Labs"];
 
   const isCrisisActive = Boolean(campusState.active_crisis);
+  const isSeismicActive = campusState.active_crisis === CRISIS_TYPES.SEISMIC_ANOMALY;
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -336,7 +445,7 @@ export default function APUNexusDashboard() {
               <h1 className="text-lg font-bold tracking-tight text-white flex items-center gap-2">
                 APU-Nexus
                 <span className="text-xs px-2 py-0.5 rounded bg-cyan-500/10 text-cyan-400 border border-cyan-500/30 font-mono">
-                  v2.4-PROD
+                  v2.8-PROD
                 </span>
               </h1>
               <span className="hidden sm:inline-block text-xs text-slate-400 font-medium">
@@ -378,6 +487,34 @@ export default function APUNexusDashboard() {
               : "AUTONOMOUS SELF-HEALING ACTIVE"}
           </div>
 
+          {/* Mobile IoT Edge Sensor Badge */}
+          <Link
+            href="/sensor"
+            target="_blank"
+            className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/40 text-xs font-mono text-cyan-300 transition shadow-sm"
+            title="Open Mobile IoT Accelerometer Web App"
+          >
+            <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+            <div className="flex items-center gap-1.5">
+              <span
+                className={`w-2 h-2 rounded-full ${
+                  mobileIotData.device_connected
+                    ? mobileIotData.seismic_alert
+                      ? "bg-rose-500 animate-ping"
+                      : "bg-emerald-400"
+                    : "bg-slate-500"
+                }`}
+              />
+              <span>
+                Mobile IoT:{" "}
+                {mobileIotData.device_connected
+                  ? `${mobileIotData.magnitude.toFixed(1)}G`
+                  : "Standby"}
+              </span>
+            </div>
+            <ExternalLink className="w-3 h-3 text-cyan-400/80" />
+          </Link>
+
           {/* Connection Mode Badge */}
           <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-800/80 border border-slate-700/60 text-xs font-mono text-slate-300">
             <Database className="w-3.5 h-3.5 text-cyan-400" />
@@ -400,6 +537,22 @@ export default function APUNexusDashboard() {
           </div>
         </div>
       </header>
+
+      {/* FLASHING SEISMIC EMERGENCY BANNER */}
+      {isSeismicActive && (
+        <div className="bg-rose-600 text-white px-4 py-2 text-xs font-bold font-mono tracking-wide flex items-center justify-between shadow-lg animate-pulse">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="w-4 h-4" />
+            <span>
+              CRITICAL SEISMIC & STRUCTURAL EMERGENCY (8.4G) DETECTED VIA MOBILE IOT SENSOR
+              IN SERVER ROOM CORE. TRIP BREAKER SRV-CORE-HV1 ENGAGED!
+            </span>
+          </div>
+          <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
+            FAILOVER TO GCP ASIA-SOUTHEAST1-B ACTIVE
+          </span>
+        </div>
+      )}
 
       {/* 2. DEMO CRISIS INJECTION BAR (FOR JUDGES) */}
       <section className="bg-slate-900/90 border-b border-slate-800 px-4 lg:px-8 py-3">
@@ -437,6 +590,16 @@ export default function APUNexusDashboard() {
             >
               <Cpu className="w-3.5 h-3.5 text-blue-400" />
               Simulate Library HVAC Energy Waste
+            </button>
+
+            {/* 4th Seismic Anomaly Crisis Button */}
+            <button
+              onClick={() => handleTriggerCrisis(CRISIS_TYPES.SEISMIC_ANOMALY)}
+              disabled={isRemediating}
+              className="px-3 py-1.5 rounded-md bg-purple-950/40 hover:bg-purple-900/60 border border-purple-500/60 hover:border-purple-400 text-purple-200 text-xs font-bold transition flex items-center gap-1.5 disabled:opacity-50 shadow-sm shadow-purple-500/20"
+            >
+              <Activity className="w-3.5 h-3.5 text-purple-400 animate-pulse" />
+              Simulate Seismic Power Anomaly (8.4G)
             </button>
           </div>
 
@@ -484,7 +647,8 @@ export default function APUNexusDashboard() {
           {/* Card 1: Network Wi-Fi & Latency */}
           <div
             className={`p-4 rounded-xl border bg-slate-900/60 backdrop-blur transition-all ${
-              campusState.avg_wifi_load > 85
+              campusState.avg_wifi_load > 85 ||
+              campusState.zones["Block B - AI Labs"]?.packet_loss > 15
                 ? "border-rose-500/80 shadow-lg shadow-rose-500/10 animate-pulse"
                 : "border-slate-800 hover:border-slate-700"
             }`}
@@ -570,6 +734,7 @@ export default function APUNexusDashboard() {
           {/* Card 3: IoT HVAC & Thermal */}
           <div
             className={`p-4 rounded-xl border bg-slate-900/60 backdrop-blur transition-all ${
+              campusState.zones["Server Room Core"]?.vibration_g > 3.0 ||
               campusState.zones["Server Room Core"]?.ac_temp_c > 30 ||
               campusState.zones["APU Library Level 2"]?.power_usage_kw > 100
                 ? "border-amber-500/80 shadow-lg shadow-amber-500/10 animate-pulse"
@@ -578,7 +743,7 @@ export default function APUNexusDashboard() {
           >
             <div className="flex items-center justify-between">
               <span className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
-                IoT HVAC & Power
+                IoT HVAC & Vibration
               </span>
               <Thermometer className="w-4 h-4 text-emerald-400" />
             </div>
@@ -586,8 +751,14 @@ export default function APUNexusDashboard() {
               <span className="text-2xl font-bold font-mono tracking-tight text-white">
                 {campusState.total_power_kw} kW
               </span>
-              <span className="text-xs text-slate-400 font-mono">
-                {campusState.zones["Server Room Core"]?.ac_temp_c}°C Core
+              <span
+                className={`text-xs font-mono font-bold ${
+                  campusState.zones["Server Room Core"]?.vibration_g > 3.0
+                    ? "text-rose-400"
+                    : "text-slate-400"
+                }`}
+              >
+                {campusState.zones["Server Room Core"]?.vibration_g?.toFixed(1) || "1.0"}G Rack Vibration
               </span>
             </div>
             <div className="mt-2 w-full bg-slate-800 rounded-full h-1.5 overflow-hidden">
@@ -630,46 +801,282 @@ export default function APUNexusDashboard() {
           </div>
         </section>
 
-        {/* 4. MULTI-ZONE SELECTOR & ZONE DETAILS */}
-        <section className="bg-slate-900/60 rounded-xl border border-slate-800 p-4">
-          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 mb-4">
+        {/* 4. 2D SPATIAL CAMPUS DIGITAL TWIN FLOOR MAP (SVG) & ZONE DETAILS */}
+        <section className="bg-slate-900/60 rounded-xl border border-slate-800 p-5 space-y-4">
+          <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
             <div className="flex items-center gap-2">
-              <Layers className="w-4 h-4 text-cyan-400" />
+              <MapPin className="w-4 h-4 text-cyan-400" />
               <h2 className="text-sm font-semibold tracking-wide text-white uppercase">
-                APU Campus Zone Digital Twins
+                2D Spatial Campus Twin & Topology Map
               </h2>
             </div>
-            {/* Zone Pills */}
-            <div className="flex flex-wrap gap-1.5">
-              {ZONE_NAMES.map((name) => {
-                const zone = campusState.zones[name];
-                const isSelected = selectedZone === name;
-                const isCritical = zone?.status === "CRITICAL";
+            <span className="text-xs text-slate-400 font-mono">
+              Interactive SVG Mesh Conduits & Zone Sensors
+            </span>
+          </div>
 
+          {/* SVG MAP VISUALIZER */}
+          <div className="w-full bg-slate-950/80 rounded-xl border border-slate-800 p-4 overflow-hidden relative">
+            <svg
+              viewBox="0 0 600 240"
+              className="w-full h-auto max-h-[260px] select-none"
+            >
+              <defs>
+                <pattern
+                  id="grid"
+                  width="20"
+                  height="20"
+                  patternUnits="userSpaceOnUse"
+                >
+                  <path
+                    d="M 20 0 L 0 0 0 20"
+                    fill="none"
+                    stroke="#1e293b"
+                    strokeWidth="0.5"
+                  />
+                </pattern>
+                {/* Conduit Gradient */}
+                <linearGradient id="conduitGrad" x1="0" y1="0" x2="1" y2="1">
+                  <stop offset="0%" stopColor="#06b6d4" stopOpacity="0.8" />
+                  <stop offset="100%" stopColor="#818cf8" stopOpacity="0.8" />
+                </linearGradient>
+              </defs>
+
+              {/* Background Blueprint Grid */}
+              <rect width="600" height="240" fill="url(#grid)" />
+
+              {/* Inter-building Optical Mesh Lines with animated dash array */}
+              <line
+                x1="150"
+                y1="60"
+                x2="450"
+                y2="60"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                className="animate-pulse"
+              />
+              <line
+                x1="150"
+                y1="180"
+                x2="450"
+                y2="180"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+                className="animate-pulse"
+              />
+              <line
+                x1="150"
+                y1="60"
+                x2="150"
+                y2="180"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+              />
+              <line
+                x1="450"
+                y1="60"
+                x2="450"
+                y2="180"
+                stroke="#334155"
+                strokeWidth="2"
+                strokeDasharray="4 4"
+              />
+              <line
+                x1="150"
+                y1="60"
+                x2="450"
+                y2="180"
+                stroke="url(#conduitGrad)"
+                strokeWidth="1.5"
+                strokeDasharray="6 6"
+              />
+
+              {/* ZONE 1: Block B - AI Labs (Top Left) */}
+              {(() => {
+                const z = campusState.zones["Block B - AI Labs"];
+                const isCrit = z?.status === "CRITICAL";
+                const isSel = selectedZone === "Block B - AI Labs";
                 return (
-                  <button
-                    key={name}
-                    onClick={() => setSelectedZone(name)}
-                    className={`px-3 py-1.5 rounded-lg text-xs font-medium transition flex items-center gap-2 ${
-                      isSelected
-                        ? "bg-cyan-500 text-slate-950 font-semibold shadow-md shadow-cyan-500/20"
-                        : "bg-slate-800/80 hover:bg-slate-800 text-slate-300 border border-slate-700/60"
-                    }`}
+                  <g
+                    className="cursor-pointer transition-all"
+                    onClick={() => setSelectedZone("Block B - AI Labs")}
                   >
-                    <span
-                      className={`w-2 h-2 rounded-full ${
-                        isCritical
-                          ? "bg-rose-500 animate-ping"
-                          : isSelected
-                          ? "bg-slate-950"
-                          : "bg-emerald-400"
-                      }`}
+                    <rect
+                      x="50"
+                      y="20"
+                      width="190"
+                      height="80"
+                      rx="10"
+                      fill={isCrit ? "#450a0a" : isSel ? "#083344" : "#0f172a"}
+                      stroke={isCrit ? "#ef4444" : isSel ? "#06b6d4" : "#334155"}
+                      strokeWidth={isSel ? "2.5" : "1.5"}
                     />
-                    {name}
-                  </button>
+                    <circle
+                      cx="70"
+                      cy="40"
+                      r="5"
+                      fill={isCrit ? "#ef4444" : "#10b981"}
+                      className={isCrit ? "animate-ping" : ""}
+                    />
+                    <text
+                      x="85"
+                      y="44"
+                      fill="#f8fafc"
+                      fontSize="12"
+                      fontWeight="bold"
+                    >
+                      Block B - AI Labs
+                    </text>
+                    <text x="70" y="65" fill="#94a3b8" fontSize="10">
+                      Wi-Fi: {z?.wifi_load}% • Loss: {z?.packet_loss}%
+                    </text>
+                    <text x="70" y="82" fill="#38bdf8" fontSize="9" fontFamily="monospace">
+                      ZONE-B-AILAB • {z?.cloud_instances} Cloud Nodes
+                    </text>
+                  </g>
                 );
-              })}
-            </div>
+              })()}
+
+              {/* ZONE 2: APU Library Level 2 (Top Right) */}
+              {(() => {
+                const z = campusState.zones["APU Library Level 2"];
+                const isCrit = z?.status === "CRITICAL";
+                const isSel = selectedZone === "APU Library Level 2";
+                return (
+                  <g
+                    className="cursor-pointer transition-all"
+                    onClick={() => setSelectedZone("APU Library Level 2")}
+                  >
+                    <rect
+                      x="360"
+                      y="20"
+                      width="190"
+                      height="80"
+                      rx="10"
+                      fill={isCrit ? "#450a0a" : isSel ? "#083344" : "#0f172a"}
+                      stroke={isCrit ? "#ef4444" : isSel ? "#06b6d4" : "#334155"}
+                      strokeWidth={isSel ? "2.5" : "1.5"}
+                    />
+                    <circle
+                      cx="380"
+                      cy="40"
+                      r="5"
+                      fill={isCrit ? "#ef4444" : "#10b981"}
+                      className={isCrit ? "animate-ping" : ""}
+                    />
+                    <text
+                      x="395"
+                      y="44"
+                      fill="#f8fafc"
+                      fontSize="12"
+                      fontWeight="bold"
+                    >
+                      APU Library Level 2
+                    </text>
+                    <text x="380" y="65" fill="#94a3b8" fontSize="10">
+                      AC: {z?.ac_temp_c}°C • Power: {z?.power_usage_kw}kW
+                    </text>
+                    <text x="380" y="82" fill="#38bdf8" fontSize="9" fontFamily="monospace">
+                      ZONE-LIB-LVL2 • {z?.occupancy_count} Students
+                    </text>
+                  </g>
+                );
+              })()}
+
+              {/* ZONE 3: Main Auditorium (Bottom Left) */}
+              {(() => {
+                const z = campusState.zones["Main Auditorium"];
+                const isCrit = z?.status === "CRITICAL";
+                const isSel = selectedZone === "Main Auditorium";
+                return (
+                  <g
+                    className="cursor-pointer transition-all"
+                    onClick={() => setSelectedZone("Main Auditorium")}
+                  >
+                    <rect
+                      x="50"
+                      y="140"
+                      width="190"
+                      height="80"
+                      rx="10"
+                      fill={isCrit ? "#450a0a" : isSel ? "#083344" : "#0f172a"}
+                      stroke={isCrit ? "#ef4444" : isSel ? "#06b6d4" : "#334155"}
+                      strokeWidth={isSel ? "2.5" : "1.5"}
+                    />
+                    <circle
+                      cx="70"
+                      cy="160"
+                      r="5"
+                      fill={isCrit ? "#ef4444" : "#10b981"}
+                    />
+                    <text
+                      x="85"
+                      y="164"
+                      fill="#f8fafc"
+                      fontSize="12"
+                      fontWeight="bold"
+                    >
+                      Main Auditorium
+                    </text>
+                    <text x="70" y="185" fill="#94a3b8" fontSize="10">
+                      Wi-Fi: {z?.wifi_load}% • RTT: {z?.latency_ms}ms
+                    </text>
+                    <text x="70" y="202" fill="#38bdf8" fontSize="9" fontFamily="monospace">
+                      ZONE-AUD-MAIN • Low Standby
+                    </text>
+                  </g>
+                );
+              })()}
+
+              {/* ZONE 4: Server Room Core (Bottom Right) */}
+              {(() => {
+                const z = campusState.zones["Server Room Core"];
+                const isCrit = z?.status === "CRITICAL";
+                const isSel = selectedZone === "Server Room Core";
+                return (
+                  <g
+                    className="cursor-pointer transition-all"
+                    onClick={() => setSelectedZone("Server Room Core")}
+                  >
+                    <rect
+                      x="360"
+                      y="140"
+                      width="190"
+                      height="80"
+                      rx="10"
+                      fill={isCrit ? "#450a0a" : isSel ? "#083344" : "#0f172a"}
+                      stroke={isCrit ? "#ef4444" : isSel ? "#06b6d4" : "#334155"}
+                      strokeWidth={isSel ? "2.5" : "1.5"}
+                    />
+                    <circle
+                      cx="380"
+                      cy="160"
+                      r="5"
+                      fill={isCrit ? "#ef4444" : "#10b981"}
+                      className={isCrit ? "animate-ping" : ""}
+                    />
+                    <text
+                      x="395"
+                      y="164"
+                      fill="#f8fafc"
+                      fontSize="12"
+                      fontWeight="bold"
+                    >
+                      Server Room Core
+                    </text>
+                    <text x="380" y="185" fill="#94a3b8" fontSize="10">
+                      Temp: {z?.ac_temp_c}°C • Vibration: {z?.vibration_g || "1.0"}G
+                    </text>
+                    <text x="380" y="202" fill="#38bdf8" fontSize="9" fontFamily="monospace">
+                      ZONE-SRV-CORE • CPU: {z?.server_cpu}%
+                    </text>
+                  </g>
+                );
+              })()}
+            </svg>
           </div>
 
           {/* Detailed Zone Telemetry Card */}
@@ -719,16 +1126,20 @@ export default function APUNexusDashboard() {
             </div>
 
             <div className="bg-slate-950/50 p-3 rounded-lg border border-slate-800">
-              <span className="text-slate-400 block text-[11px]">Zone Occupancy</span>
-              <span className="font-mono text-base font-bold text-white mt-1 block">
-                {currentZoneData.occupancy_count} Students
+              <span className="text-slate-400 block text-[11px]">Vibration Vector</span>
+              <span
+                className={`font-mono text-base font-bold mt-1 block ${
+                  (currentZoneData.vibration_g || 1.0) > 3.0 ? "text-rose-400" : "text-white"
+                }`}
+              >
+                {currentZoneData.vibration_g || "1.00"} G
               </span>
-              <span className="text-[10px] text-slate-400 font-mono">PIR / Vision Count</span>
+              <span className="text-[10px] text-slate-400 font-mono">Mobile IoT Stream</span>
             </div>
           </div>
 
           {currentZoneData.active_alert && (
-            <div className="mt-3 p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center gap-2 text-rose-300 text-xs">
+            <div className="p-2.5 rounded-lg bg-rose-500/10 border border-rose-500/30 flex items-center gap-2 text-rose-300 text-xs">
               <AlertTriangle className="w-4 h-4 text-rose-400 shrink-0" />
               <span className="font-mono">{currentZoneData.active_alert}</span>
             </div>
@@ -819,7 +1230,7 @@ export default function APUNexusDashboard() {
           </div>
         </section>
 
-        {/* 6. CHARTS & TERMINAL (2-COLUMN GRID) */}
+        {/* 6. CHARTS & TERMINAL / IAC INSPECTOR (2-COLUMN GRID) */}
         <section className="grid grid-cols-1 lg:grid-cols-12 gap-6">
           {/* Time Series Telemetry Charts (7 Cols) */}
           <div className="lg:col-span-7 bg-slate-900/60 rounded-xl border border-slate-800 p-5 flex flex-col justify-between">
@@ -925,49 +1336,96 @@ export default function APUNexusDashboard() {
             </div>
           </div>
 
-          {/* Live Agent Monospace Terminal & CLI Command Viewer (5 Cols) */}
+          {/* Live Agent Monospace Terminal & Terraform / IaC Inspector (5 Cols) */}
           <div className="lg:col-span-5 bg-slate-900/90 rounded-xl border border-slate-800 p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between border-b border-slate-800 pb-2 mb-3">
-              <div className="flex items-center gap-2">
-                <TerminalIcon className="w-4 h-4 text-cyan-400" />
-                <h3 className="text-xs font-semibold uppercase tracking-wider text-white">
-                  Autonomous Agent Terminal
-                </h3>
+              <div className="flex items-center gap-1 bg-slate-950 p-0.5 rounded-lg border border-slate-800 text-xs">
+                <button
+                  onClick={() => setActiveInspectorTab("logs")}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                    activeInspectorTab === "logs"
+                      ? "bg-cyan-500 text-slate-950"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <TerminalIcon className="w-3.5 h-3.5" />
+                  Live CLI Logs
+                </button>
+                <button
+                  onClick={() => setActiveInspectorTab("iac")}
+                  className={`px-2.5 py-1 rounded text-[11px] font-semibold transition flex items-center gap-1.5 ${
+                    activeInspectorTab === "iac"
+                      ? "bg-purple-500 text-white"
+                      : "text-slate-400 hover:text-white"
+                  }`}
+                >
+                  <FileCode className="w-3.5 h-3.5" />
+                  Generated IaC / Terraform
+                </button>
               </div>
-              <span className="text-[10px] text-emerald-400 font-mono">LIVE EXECUTION</span>
+
+              {activeInspectorTab === "iac" ? (
+                <button
+                  onClick={handleCopyIaC}
+                  className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-200 text-[10px] font-mono flex items-center gap-1 transition"
+                >
+                  <Copy className="w-3 h-3" />
+                  {copiedIaC ? "Copied!" : "Copy IaC"}
+                </button>
+              ) : (
+                <span className="text-[10px] text-emerald-400 font-mono">LIVE EXECUTION</span>
+              )}
             </div>
 
-            {/* Terminal Log Output Window */}
-            <div className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] space-y-1.5 border border-slate-800/80 selection:bg-cyan-500/30">
-              {terminalLogs.length === 0 ? (
-                <div className="text-slate-500 italic">Listening for autonomous events...</div>
-              ) : (
-                terminalLogs.map((log) => (
-                  <div key={log.id} className="leading-relaxed">
-                    <span className="text-slate-500 mr-1.5">[{log.time}]</span>
-                    <span
-                      className={`font-semibold mr-1.5 ${
-                        log.type === "CRITICAL"
-                          ? "text-rose-400"
-                          : log.type === "WARN"
-                          ? "text-amber-400"
-                          : log.type === "GEMINI"
-                          ? "text-cyan-300 font-bold"
-                          : log.type === "ACTION"
-                          ? "text-indigo-300"
-                          : log.type === "FINOPS"
-                          ? "text-emerald-300"
-                          : "text-slate-300"
-                      }`}
-                    >
-                      [{log.type}]
-                    </span>
-                    <span className="text-slate-200">{log.message}</span>
-                  </div>
-                ))
-              )}
-              <div ref={logsEndRef} />
-            </div>
+            {/* Content Window: Logs vs IaC Manifest */}
+            {activeInspectorTab === "logs" ? (
+              <div className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] space-y-1.5 border border-slate-800/80 selection:bg-cyan-500/30">
+                {terminalLogs.length === 0 ? (
+                  <div className="text-slate-500 italic">Listening for autonomous events...</div>
+                ) : (
+                  terminalLogs.map((log) => (
+                    <div key={log.id} className="leading-relaxed">
+                      <span className="text-slate-500 mr-1.5">[{log.time}]</span>
+                      <span
+                        className={`font-semibold mr-1.5 ${
+                          log.type === "CRITICAL"
+                            ? "text-rose-400"
+                            : log.type === "WARN"
+                            ? "text-amber-400"
+                            : log.type === "GEMINI"
+                            ? "text-cyan-300 font-bold"
+                            : log.type === "ACTION"
+                            ? "text-indigo-300"
+                            : log.type === "FINOPS"
+                            ? "text-emerald-300"
+                            : "text-slate-300"
+                        }`}
+                      >
+                        [{log.type}]
+                      </span>
+                      <span className="text-slate-200">{log.message}</span>
+                    </div>
+                  ))
+                )}
+                <div ref={logsEndRef} />
+              </div>
+            ) : (
+              <div className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] text-purple-300 whitespace-pre border border-purple-900/40 select-all leading-relaxed">
+                {currentDiagnosis?.iac_manifest ||
+                  `# Terraform: APU-Nexus Campus Cloud Baseline Infrastructure
+resource "google_compute_network" "apu_mesh_vpc" {
+  name                    = "apu-campus-mesh-vpc"
+  auto_create_subnetworks = false
+}
+
+resource "google_compute_subnetwork" "apu_edge_subnets" {
+  name          = "apu-asia-se1-subnet"
+  ip_cidr_range = "10.10.0.0/16"
+  region        = "asia-southeast1"
+  network       = google_compute_network.apu_mesh_vpc.id
+}`}
+              </div>
+            )}
 
             {/* Generated CLI Remediation Payload View */}
             <div className="mt-3 pt-3 border-t border-slate-800">
@@ -1043,20 +1501,20 @@ export default function APUNexusDashboard() {
         <div className="flex items-center gap-2">
           <span>APU-Nexus Autonomous Campus Infrastructure</span>
           <span>•</span>
-          <span>Asia Pacific University Hackathon MVP</span>
+          <span>Asia Pacific University Hackathon MVP (Phase 2 Enterprise)</span>
         </div>
         <div className="flex items-center gap-4 text-[11px] font-mono">
           <span className="flex items-center gap-1 text-slate-400">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-400"></span>
-            Cloud: Google Cloud Run
+            Cloud: Google Cloud Run & DR Groups
           </span>
           <span className="flex items-center gap-1 text-slate-400">
             <span className="w-1.5 h-1.5 rounded-full bg-cyan-400"></span>
-            Brain: Gemini 1.5/2.0 Flash
+            Brain: Gemini 1.5/2.0 + Terraform IaC
           </span>
           <span className="flex items-center gap-1 text-slate-400">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-400"></span>
-            IoT: BACnet & SD-WAN
+            <span className="w-1.5 h-1.5 rounded-full bg-purple-400"></span>
+            IoT: Mobile Accelerometer & BACnet
           </span>
         </div>
       </footer>
