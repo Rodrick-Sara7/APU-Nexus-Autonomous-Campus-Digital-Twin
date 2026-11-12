@@ -1,5 +1,4 @@
-import { NextResponse } from "next/server";
-import { analyzeCampusTelemetry } from "@/lib/gemini_agent.js";
+import { analyzeCampusTelemetry } from "../../../lib/gemini_agent.js";
 
 /**
  * POST /api/agent
@@ -12,7 +11,7 @@ export async function POST(request) {
 
     const analysis = await analyzeCampusTelemetry(telemetry, crisisType);
 
-    return NextResponse.json(analysis, {
+    return Response.json(analysis, {
       status: 200,
       headers: {
         "Content-Type": "application/json",
@@ -20,7 +19,7 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[APU-Nexus API] Multi-Agent analysis error:", error);
-    return NextResponse.json(
+    return Response.json(
       {
         status: "critical",
         anomaly_type: "Controller Processing Exception",
@@ -48,7 +47,7 @@ export async function POST(request) {
  * Health check endpoint for monitoring
  */
 export async function GET() {
-  return NextResponse.json({
+  return Response.json({
     service: "APU-Nexus Autonomous Controller",
     version: "1.0.0",
     status: "HEALTHY",
