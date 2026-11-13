@@ -1,50 +1,67 @@
 # 🌐 APU-Nexus: Autonomous Campus Digital Twin
-### *When Cloud, IoT, and Network Converge (Phase 2 Enterprise Prototype)*
+### *True-Edge Hardware Sentinels, Multi-Agent AI Remediation & Human-in-the-Loop Governance*
 > **Track:** Intelligent Automation & Digital Transformation  
-> **Platform:** Next.js 16 (App Router), Tailwind CSS v4, Recharts, Lucide, Google Gemini AI, Firebase RTDB & Mobile Accelerometer Hardware Bridge
+> **Core Stack:** Next.js 16 (App Router), Tailwind CSS v4, Recharts, Lucide, Google Gemini AI, Firebase RTDB, WebRTC Optical Computer Vision (`/cctv`), & Mobile Hardware Accelerometer (`/sensor`)
 
 ---
 
 ## 🏛️ Executive Summary
 
-**APU-Nexus** is an autonomous campus infrastructure digital twin engineered for **Asia Pacific University of Technology & Innovation (APU)**. Built to solve high-frequency campus operational bottlenecks, APU-Nexus converges **Software-Defined Networking (SDN)**, **IoT Building Management (BACnet/MQTT)**, **Mobile Accelerometer Hardware Sensors**, and **Cloud Infrastructure (Google Cloud Run / DR Instance Groups)** into a unified real-time telemetry engine governed by an autonomous **5-Agent Multi-Agent Gemini AI Controller** with dynamic **Terraform Infrastructure-as-Code (IaC)** synthesis.
+**APU-Nexus** is an autonomous campus infrastructure digital twin engineered for **Asia Pacific University of Technology & Innovation (APU)**. Built to solve high-frequency campus operational bottlenecks, APU-Nexus converges **Software-Defined Networking (SDN)**, **IoT Building Management (BACnet/MQTT)**, **Dual True-Edge Hardware Sentinels (WebRTC Optical Computer Vision & Mobile Accelerometer)**, and **Cloud Infrastructure (Google Cloud Run / DR Instance Groups)** into a unified real-time telemetry engine governed by an autonomous **5-Agent Multi-Agent Gemini AI Controller** with dynamic **Terraform & Kubernetes Infrastructure-as-Code (IaC)** synthesis.
 
-When network storms, server room thermal runaway, energy anomalies, or physical seismic shocks occur, APU-Nexus detects, diagnoses root causes, and deploys self-healing remediation in **under 4 seconds** with zero human intervention.
+When optical camera sabotage, physical seismic shocks, network storms, server room thermal runaway, or library HVAC energy waste occur, APU-Nexus detects, diagnoses root causes, and either self-heals in **under 4 seconds** (`Full Autonomous` mode) or holds for operator sign-off (`Co-Pilot Governance` mode)—complete with live **Voice NOC** briefings, **Open-Meteo Bukit Jalil** weather correlation, **GitHub GitOps PR** dispatch, and **1-Click Compliance & ESG Audit Report** exports.
 
 ---
 
 ## 🚀 Key Architectural Highlights
 
-### 1. Cross-Device Mobile IoT Hardware Bridge (`/sensor`)
-- **Real Accelerometer Streaming:** Connect any mobile phone by navigating to `/sensor`. It hooks into the device's physical accelerometer via `DeviceMotionEvent` (supporting iOS 17+ permission handshake and Android).
-- **Dual-Mode Transmission:** Telemetry streams simultaneously via **Firebase Realtime Database** and an in-memory **HTTP State Bridge (`/api/iot`)**, allowing immediate cross-device communication between a presenter's phone and laptop on the local Wi-Fi with zero setup.
-- **Fail-Safe Touch Seismic Simulator:** If running on non-HTTPS local IP where mobile browsers restrict motion sensors, presenters can use the interactive **G-Force Slider (1.0G - 9.5G)** or the **[HOLD TO SIMULATE VIOLENT SEISMIC SHAKE]** button to reliably demonstrate the live edge-to-cloud trigger.
+### 1. Dual True-Edge Hardware Sentinels (`/sensor` & `/cctv`)
+All edge nodes operate in **single-window SPA navigation** and stream directly into the `/api/iot` cross-device hardware bridge with zero mock reliance:
 
-### 2. 2D Spatial Campus Digital Twin Topology Map (SVG)
-- An architectural visualizer of the 4 APU zones interconnected by animated optical mesh lines and power conduits.
-- Dynamic visual feedback: Emerald (Healthy), Pulsing Red (Active Crisis), Cyan (Self-Healing / Re-routing).
-- Clickable zone floor nodes that instantly filter telemetry analytics.
+- **Mobile Hardware Accelerometer Node (`/sensor`):**
+  - **60 FPS `DeviceMotionEvent` Streaming:** Hooks into real phone accelerometer/gyroscope hardware (iOS 13+ permission handshake & Android).
+  - **3-Tier `3.5G` Smart Deadband:** Cleanly separates nominal ambient vibration (`1.00 G`) and slight vibration (`< 3.5G`, filtered) from violent seismic shock (`>= 3.5G` trigger).
+  - **Interactive G-Force Touch Simulator (`1.0G – 9.5G`):** Includes an interactive slider and touch/click fallback button (`[HOLD TO SIMULATE VIOLENT SEISMIC SHAKE]`) so demos work seamlessly on desktop or non-HTTPS local IPs.
+- **WebRTC Optical Computer Vision Sentinel (`/cctv`):**
+  - **Real-Time RGB Luminance Sampler (`500ms`):** Captures live webcam frames via `getUserMedia` + `<canvas>` and computes average scene luminance (`Lux`).
+  - **Optical Sabotage Detection (`<15.0 Lux`):** Automatically detects lens obstruction / physical tampering in **Server Room Core** and dispatches `CAMERA_TAMPERING` to the NOC dashboard.
+  - **1-Click Test Mode:** Includes a **[Simulate Cover Lens (<15)]** toggle for instant verification even without physically covering a camera.
+- **HTTPS Tunnel Support (for iOS Safari / Mobile Testing):**
+  Mobile browsers require HTTPS for `DeviceMotionEvent` and `getUserMedia` camera permissions when accessed remotely:
+  ```bash
+  npx cloudflared tunnel --url http://localhost:3000
+  ```
 
-### 3. Dynamic Terraform & Kubernetes IaC Engine
-- During each incident remediation, the AI controller doesn't just execute CLI commands—it synthesizes production-grade **Terraform (`.tf`)** and **Kubernetes (`deployment.yaml`)** manifests.
-- Accessible directly on the dashboard via the **[Generated IaC / Terraform]** inspector tab with a one-click **[Copy IaC]** button.
+### 2. Enterprise Governance, Observability & GitOps Features
+- **Human-in-the-Loop (HITL) Co-Pilot Governance Toggle:** Switch seamlessly between **`🟢 Mode: Full Autonomous (Auto-Heal)`** and **`🟡 Mode: Co-Pilot Governance (Hold for Approval)`**. In Co-Pilot mode, the 5-Agent pipeline completes diagnosis and IaC synthesis, holds the red alert state on stage for judges/operators, and waits for **`[⚡ Approve & Execute Autonomous Remediation]`**.
+- **Live Voice NOC Incident Briefing:** Toggleable **`[🔊 Voice NOC: ON / 🔇 OFF]`** using the native Web Speech API (`window.speechSynthesis`) to announce crisp executive alerts on crisis detection, Co-Pilot hold, and remediation completion.
+- **Natural-Language "Ask APU-Nexus" AI Commander:** Interactive command bar with one-click executive prompt chips querying live zone kW loads, temperatures, carbon emissions, RM savings, and 5-Agent defense architecture (powered by Gemini when `GEMINI_API_KEY` is set, or the built-in live telemetry engine with zero keys required).
+- **Live Bukit Jalil Weather Correlation:** Polls the free, keyless Open-Meteo satellite API (`3.0554° N, 101.7005° E`) every 60 seconds to correlate tropical ambient temperature and humidity against campus HVAC chiller loads and ESG carbon metrics.
+- **Closed-Loop GitOps & 1-Click Compliance Export:**
+  - **Automated GitHub Pull Requests (`/api/github`):** Dispatches synthesized Terraform/Kubernetes manifests directly to a GitHub branch and opens a Pull Request.
+  - **Discord Webhook Alerts:** Sends rich Red Alert and Green Resolved embeds to operations channels.
+  - **1-Click Compliance & ESG Audit Report (`.md`):** Compiles live weather, zone telemetry, FinOps/ESG totals, and the full session incident audit log into `APU-Nexus-Compliance-Report.md`.
+
+### 3. 2D Spatial Campus Digital Twin Topology Map & Dynamic IaC Engine
+- Interactive SVG topology across all 4 APU zones with animated optical mesh lines and power conduits (Emerald = Healthy, Pulsing Red = Active Crisis, Cyan/Emerald = Re-routed).
+- Real-time **Terraform (`.tf`)** and **Kubernetes (`deployment.yaml`)** manifest synthesizer with one-click **[Copy IaC]** and **[Deploy to GitHub]**.
 
 ### 4. 5-Agent Autonomous Orchestration Pipeline
-```
+```text
 [Stage 01: IoT Telemetry Ingestion Agent]
-               │ (Sub-second threshold detection & mobile G-force tracking)
+               │ (Sub-second threshold detection, WebRTC Lux & mobile G-force tracking)
                ▼
 [Stage 02: Gemini Root-Cause Diagnostic Agent]
-               │ (Cross-correlates SDN packet loss, CPU starvation, HVAC temps & seismic vectors)
+               │ (Cross-correlates SDN packet loss, optical tampering, HVAC temps & seismic vectors)
                ▼
 [Stage 03: Resolution Architect Agent]
-               │ (Synthesizes zero-downtime execution payload & Terraform / Cloud Run manifests)
+               │ (Synthesizes zero-downtime execution payload & Terraform / Kubernetes manifests)
                ▼
 [Stage 04: Cloud & Edge Execution Agent]
-               │ (Dispatches gcloud CLI, BACnet set-points & high-voltage breaker isolation)
+               │ (Holds for HITL Co-Pilot approval if enabled, or executes gcloud, BACnet & SDN commands)
                ▼
 [Stage 05: Audit & FinOps Compliance Agent]
-               │ (Verifies SLA recovery & calculates exact campus savings in MYR)
+               │ (Verifies SLA recovery, updates ESG CO2e & RM savings, and logs compliance audit)
                ▼
 [Autonomous Campus Equilibrium Restored]
 ```
@@ -55,100 +72,84 @@ When network storms, server room thermal runaway, energy anomalies, or physical 
 
 | Zone Identifier | Zone Code | Monitored Telemetry | Target Operational Baseline |
 | :--- | :--- | :--- | :--- |
-| **Block B - AI Labs** | `ZONE-B-AILAB` | Wi-Fi load, packet drop, latency, edge vCPU, Cloud Run replicas | 40-50% Wi-Fi, <0.2% drop, 18ms latency |
+| **Block B - AI Labs** | `ZONE-B-AILAB` | Wi-Fi load, packet drop, latency, edge vCPU, Cloud Run replicas | 40–50% Wi-Fi, <0.2% drop, 18ms latency |
 | **APU Library Level 2** | `ZONE-LIB-LVL2` | Occupancy (PIR/vision), Smart VRF AC temp, lighting power (kW) | Eco-comfort 23.5°C, dynamic lighting dimming |
 | **Main Auditorium** | `ZONE-AUD-MAIN` | Wi-Fi saturation, event power feed, sound/AC load | Nominal low-power standby during non-events |
-| **Server Room Core** | `ZONE-SRV-CORE` | Inverter chiller temp (°C), high-density rack power, vibration G-force | Rack temp 19.5°C - 21.5°C, <1.1G vibration, chiller redundancy |
+| **Server Room Core** | `ZONE-SRV-CORE` | Optical CCTV Lux, inverter chiller temp (°C), rack power, vibration G-force | ≥15.0 Lux, rack temp 19.5–21.5°C, <1.1G vibration |
 
 ---
 
-## 🎯 Judges' Live Demo Crisis Scenarios
+## 🎯 All 5 Live Demo Crisis Scenarios
 
-The dashboard features an interactive **Crisis Injection Bar** built specifically for live hackathon presentations:
-
-### Scenario 1: Wi-Fi Storm & Cloud Compute Starvation
-- **Trigger:** Click `[Simulate Block B Wi-Fi & Cloud Storm]`
-- **Anomaly Injected:** Spikes Block B `wifi_load` to **99.0%**, `packet_loss` to **18.0%**, latency to **420ms**, and server CPU to **96.0%**.
-- **Gemini Diagnosis:** Identifies layer-2 broadcast storm compounding Cloud Run replica ceiling starvation.
-- **Autonomous Remediation:** 
-  `gcloud run services update apu-portal --min-instances=8 --max-instances=16 --region=asia-southeast1 && apu-sdn-ctl vlan isolate --port=eth4/2 --divert=trunk-backup`
-- **Result:** Wi-Fi drops to ~42%, latency normalizes to 19ms, instances scale from 2 to 8. **RM 680 saved.**
-
-### Scenario 2: Server Room Core Thermal Runaway
-- **Trigger:** Click `[Simulate Server Thermal Runaway]`
-- **Anomaly Injected:** Spikes Server Room temperature to **34.5°C** and rack power to **98.0 kW**.
-- **Gemini Diagnosis:** Inverter Chiller #2 safety trip detected; high-density GPU cluster rack at risk of thermal shutdown.
-- **Autonomous Remediation:**
-  `bacnet-cli set-point --unit=CHILLER-AUX-02 --temp=18.0C --fan=100 && ipmi-chassis-power --profile=eco-balance --racks=SRV-RACK-04`
-- **Result:** Auxiliary chiller engaged, batch workloads shifted to Google Cloud Vertex spot instances, temperature restored to 21.5°C. **RM 1,250 saved.**
-
-### Scenario 3: Smart-Campus Library HVAC Energy Waste
-- **Trigger:** Click `[Simulate Library HVAC Energy Waste]`
-- **Anomaly Injected:** Detects 3 students in Library Level 2 while HVAC chills at **17.0°C** consuming peak **145.0 kW**.
-- **Gemini Diagnosis:** Occupancy/cooling mismatch caused by lingering event schedule override.
-- **Autonomous Remediation:**
-  `iot-bacnet-hvac --zone=LIB-LVL2 --set-temp=23.5C --mode=eco && dali-lighting-ctl --zone=LIB-LVL2 --dim=30`
-- **Result:** Power consumption drops from 145 kW to 21 kW, saving 84 kg CO2e. **RM 820 saved.**
-
-### Scenario 4: Seismic Structural Shock & High-Voltage Disturbance
-- **Trigger:** Click `[Simulate Seismic Power Anomaly (8.4G)]` or shake your mobile phone via `/sensor`.
-- **Anomaly Injected:** Detects **8.4G** structural vibration spike, Server Room CPU surges to **98.0%**, power jumps to **162.0 kW**, and Block B suffers **24.0%** packet loss.
-- **Gemini Diagnosis:** Severe physical vibration detected; risk of rack mechanical dislocation and transformer arcing.
-- **Autonomous Remediation:**
-  `gcloud compute instance-groups managed rolling-action replace apu-core-cluster --zone=asia-southeast1-b && bacnet-cli breaker-isolate --substation=SRV-CORE-HV1 --reroute=UPS-GRID-B`
-- **Result:** High-voltage substation breaker tripped, load shifted to UPS battery grid, workloads evacuated to GCP disaster recovery cluster in `asia-southeast1-b`. **RM 1,850 saved.**
+1. **CCTV Optical Sabotage (`CAMERA_TAMPERING`)**
+   - **Trigger:** Cover webcam lens (`<15.0 Lux`) or click **[Simulate Cover Lens (<15)]** on `/cctv`.
+   - **Remediation:** Locks magnetic access doors, switches to thermal backup optics, and dispatches APU security drone. **RM 1,450 saved.**
+2. **Seismic Structural Shock (`SEISMIC_ANOMALY`, `>3.5G` / `8.4G`)**
+   - **Trigger:** Shake phone (`>=3.5G`) or tap **[HOLD TO SIMULATE VIOLENT SEISMIC SHAKE]** on `/sensor`, or inject `8.4G` from dashboard overrides.
+   - **Remediation:** Isolates high-voltage substation breaker to UPS battery grid and evacuates core workloads to GCP `asia-southeast1-b`. **RM 1,850 saved.**
+3. **Block B Wi-Fi & Cloud Storm (`NETWORK_STORM`)**
+   - **Trigger:** Click **`[Simulate Block B Wi-Fi & Cloud Storm]`** in Overrides.
+   - **Remediation:** Isolates SDN broadcast storm VLAN and scales Cloud Run `apu-portal` instances (`min=8, max=16`). **RM 680 saved.**
+4. **Server Room Thermal Runaway (`IOT_THERMAL_RUNAWAY`)**
+   - **Trigger:** Click **`[Simulate Server Thermal Runaway]`** in Overrides.
+   - **Remediation:** Engages auxiliary BACnet chiller (`18.0°C`, `100%` fan) and shifts batch GPU workloads to Vertex spot instances. **RM 1,250 saved.**
+5. **Library HVAC Energy Waste (`ENERGY_WASTE_ANOMALY`)**
+   - **Trigger:** Click **`[Simulate Library HVAC Energy Waste]`** in Overrides.
+   - **Remediation:** Resets Library Level 2 HVAC from `17.0°C` (`145 kW`) to `23.5°C` eco-mode and dims DALI lighting to `30%`, cutting carbon load. **RM 820 saved.**
 
 ---
 
-## 🛠️ Getting Started & Installation
+## 🛠️ Zero-Config Quickstart & Verification
 
-### 1. Installation
+> **Zero-Config Guarantee:** Every dashboard feature—including HITL Governance, Voice NOC, Live Open-Meteo Weather, Ask APU-Nexus Commander, `/cctv`, `/sensor`, and Compliance Report Export—works **100% out-of-the-box with zero `.env` keys required**. Optional keys (`GEMINI_API_KEY`, `GITHUB_TOKEN`, `DISCORD_WEBHOOK_URL`) can be added in `.env.local` using `.env.example`.
+
+### 1. Clone & Install
 ```bash
 git clone https://github.com/Rodrick-Sara7/APU-Nexus-Autonomous-Campus-Digital-Twin.git
 cd APU-Nexus-Autonomous-Campus-Digital-Twin
 npm install
 ```
 
-### 2. Running Development Server
+### 2. Production Build & Start
 ```bash
-npm run dev
+npm install && npm run build && npm run start
 ```
-- Open Central NOC Dashboard: **[http://localhost:3000](http://localhost:3000)**
-- Open Mobile IoT Edge Sensor: **[http://localhost:3000/sensor](http://localhost:3000/sensor)** (or on mobile phone using your computer's local IP address e.g. `http://192.168.x.x:3000/sensor`)
+- Central NOC Dashboard: **[http://localhost:3000](http://localhost:3000)**
+- Optical CCTV Sentinel: **[http://localhost:3000/cctv](http://localhost:3000/cctv)**
+- Mobile Accelerometer Sentinel: **[http://localhost:3000/sensor](http://localhost:3000/sensor)**
 
-### 3. Automated Audit Verification
+### 3. Run Full Verification Suite
 ```bash
-node verify_project.mjs
-```
-
-### 4. Production Build
-```bash
-npm run build
-npm run start
+node verify_project.mjs && node verify_phase3_upgrades.mjs && node verify_phase4.mjs && node verify_smart_thresholds.mjs
 ```
 
 ---
 
 ## 📊 Project Structure
 
-```
+```text
 ├── app/
 │   ├── api/
 │   │   ├── agent/
-│   │   │   └── route.js        # 5-Agent Gemini controller API endpoint
+│   │   │   └── route.js              # 5-Agent Gemini controller & Ask APU-Nexus Commander API
+│   │   ├── github/
+│   │   │   └── route.js              # Closed-loop GitOps PR creation API
 │   │   └── iot/
-│   │       └── route.js        # Cross-device server in-memory IoT bridge
-│   ├── favicon.ico
-│   ├── globals.css             # Tailwind dark theme styles
-│   ├── layout.js               # Root layout & Geist font
-│   ├── page.jsx                # Enterprise NOC Dashboard (1,500+ lines of client React)
-│   └── sensor/
-│       └── page.jsx            # Mobile IoT Accelerometer & Seismic Sensor App
+│   │       └── route.js              # Cross-device CCTV + Accelerometer hardware bridge
+│   ├── cctv/
+│   │   └── page.jsx                  # WebRTC Optical Computer Vision Sentinel (<15 Lux)
+│   ├── sensor/
+│   │   └── page.jsx                  # 60 FPS Mobile Accelerometer & 3.5G Seismic Sentinel
+│   ├── globals.css                   # Tailwind CSS v4 dark NOC theme
+│   ├── layout.js                     # Root layout & Geist font
+│   └── page.jsx                      # Enterprise NOC Dashboard (HITL, Voice, Weather, Commander, Export)
 ├── lib/
-│   ├── data_simulator.js       # Multi-zone IoT, network & cloud telemetry simulator
-│   ├── firebase_setup.js       # Hybrid Firebase RTDB & Pub-Sub vibration bridge
-│   └── gemini_agent.js         # 5-Agent Gemini AI brain & Terraform IaC synthesizer
-├── postcss.config.mjs          # PostCSS Tailwind CSS plugin config
-├── verify_project.mjs          # End-to-end programmatic verification script
-└── README.md                   # Full platform and demo documentation
+│   ├── data_simulator.js             # Multi-zone IoT, network, FinOps & ESG telemetry engine
+│   ├── firebase_setup.js             # Hybrid Firebase RTDB & in-memory pub-sub bridge
+│   └── gemini_agent.js               # 5-Agent AI brain, Commander Q&A, Discord & IaC synthesizer
+├── verify_project.mjs                # Master end-to-end verification suite (8 checks)
+├── verify_phase3_upgrades.mjs        # Phase 3 FinOps, ESG, Discord & GitOps audit
+├── verify_phase4.mjs                 # Phase 4 True-Edge CCTV & Accelerometer audit
+├── verify_smart_thresholds.mjs       # 3.5G deadband & mobile touch/HTTP fallback audit
+└── README.md                         # Complete platform & demo documentation
 ```
