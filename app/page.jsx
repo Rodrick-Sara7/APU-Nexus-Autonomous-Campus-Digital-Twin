@@ -1705,7 +1705,7 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
               {commanderSource === "gemini"
-                ? "Live Gemini 1.5 Flash • Real-Time Digital Twin Query Engine"
+                ? "Live Gemini 3.5 Flash Lite • Real-Time Digital Twin Query Engine"
                 : "Zero-Key Hybrid Inference • Real-Time Digital Twin Query Engine"}
             </span>
           </div>
