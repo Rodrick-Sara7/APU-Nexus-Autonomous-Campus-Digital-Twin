@@ -122,8 +122,24 @@ ${cleanIac.substring(0, 1500)}
         if (refRes.ok) {
           const refData = await refRes.json();
           const baseSha = refData.object.sha;
-          treePayload.base_tree = baseSha;
           commitPayload.parents = [baseSha];
+
+          // Resolve the tree SHA from the head commit on main
+          let baseTreeSha = baseSha;
+          const baseCommitRes = await fetch(
+            'https://api.github.com/repos/' + owner + '/' + repo + '/git/commits/' + baseSha,
+            {
+              method: "GET",
+              headers: defaultHeaders,
+            }
+          );
+          if (baseCommitRes.ok) {
+            const baseCommitData = await baseCommitRes.json();
+            if (baseCommitData?.tree?.sha) {
+              baseTreeSha = baseCommitData.tree.sha;
+            }
+          }
+          treePayload.base_tree = baseTreeSha;
 
           // Step 2: Create new branch
           const branchRes = await fetch(

@@ -135,7 +135,7 @@ export default function APUNexusDashboard() {
     },
   ]);
 
-  const logsEndRef = useRef(null);
+  const logsContainerRef = useRef(null);
   const stateRef = useRef(campusState);
   stateRef.current = campusState;
 
@@ -193,10 +193,10 @@ export default function APUNexusDashboard() {
     };
   }, [appendLog]);
 
-  // Keep terminal scrolled
+  // Keep terminal container scrolled to bottom without hijacking browser window scroll
   useEffect(() => {
-    if (logsEndRef.current && activeInspectorTab === "logs") {
-      logsEndRef.current.scrollIntoView({ behavior: "smooth" });
+    if (logsContainerRef.current && activeInspectorTab === "logs") {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
     }
   }, [terminalLogs, activeInspectorTab]);
 
@@ -254,6 +254,22 @@ export default function APUNexusDashboard() {
         const remediated = applyAutonomousFix(crisisType, stateRef.current);
         setCampusState(remediated);
         publishTelemetry(remediated);
+
+        // Reset edge hardware bridge state so 1000ms polling does not re-trigger the resolved crisis
+        fetch("/api/iot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ type: "RESET", source: "autonomous_remediation" }),
+        }).catch(() => {});
+        setEdgeHardwareData((prev) => ({
+          ...prev,
+          type: "NOMINAL",
+          status: "HEALTHY",
+          seismic_alert: false,
+          camera_tampered: false,
+          camera_luminance: 120,
+          magnitude: 1.0,
+        }));
 
         // Step 5: Audit & FinOps Agent
         await new Promise((r) => setTimeout(r, 700));
@@ -453,6 +469,20 @@ export default function APUNexusDashboard() {
     setCurrentDiagnosis(null);
     setIsRemediating(false);
     setActiveAgentIndex(0);
+    fetch("/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "RESET", source: "manual_baseline_reset" }),
+    }).catch(() => {});
+    setEdgeHardwareData((prev) => ({
+      ...prev,
+      type: "NOMINAL",
+      status: "HEALTHY",
+      seismic_alert: false,
+      camera_tampered: false,
+      camera_luminance: 120,
+      magnitude: 1.0,
+    }));
     appendLog("Campus infrastructure reset to nominal baseline state.", "INFO");
   };
 
@@ -606,7 +636,6 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
           {/* CCTV Vision Edge Node Badge */}
           <Link
             href="/cctv"
-            target="_blank"
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
               edgeHardwareData.camera_tampered
                 ? "bg-rose-950/60 border-rose-500 text-rose-300 animate-pulse"
@@ -635,7 +664,6 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
           {/* Mobile IoT Edge Sensor Badge */}
           <Link
             href="/sensor"
-            target="_blank"
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
               edgeHardwareData.magnitude > 3.0 || edgeHardwareData.seismic_alert
                 ? "bg-purple-950/60 border-purple-500 text-purple-300 animate-pulse"
@@ -725,7 +753,6 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             {/* Direct Link to CCTV node */}
             <Link
               href="/cctv"
-              target="_blank"
               className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-medium transition flex items-center gap-1.5"
             >
               <Video className="w-3.5 h-3.5 text-rose-400" />
@@ -735,7 +762,6 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             {/* Direct Link to Accelerometer node */}
             <Link
               href="/sensor"
-              target="_blank"
               className="px-3 py-1.5 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-200 text-xs font-medium transition flex items-center gap-1.5"
             >
               <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
@@ -826,6 +852,14 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             >
               <Flame className="w-3 h-3 text-amber-400" />
               Simulate Thermal Runaway
+            </button>
+            <button
+              onClick={() => handleTriggerCrisis(CRISIS_TYPES.ENERGY_WASTE_ANOMALY)}
+              disabled={isRemediating}
+              className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/60 text-emerald-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
+            >
+              <TrendingDown className="w-3 h-3 text-emerald-400" />
+              Simulate Energy Waste
             </button>
           </div>
         )}
@@ -1744,7 +1778,10 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
 
             {/* Content Window: Logs vs IaC Manifest */}
             {activeInspectorTab === "logs" ? (
-              <div className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] space-y-1.5 border border-slate-800/80 selection:bg-cyan-500/30">
+              <div
+                ref={logsContainerRef}
+                className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] space-y-1.5 border border-slate-800/80 selection:bg-cyan-500/30"
+              >
                 {terminalLogs.length === 0 ? (
                   <div className="text-slate-500 italic">Listening for autonomous events...</div>
                 ) : (
@@ -1772,7 +1809,6 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
                     </div>
                   ))
                 )}
-                <div ref={logsEndRef} />
               </div>
             ) : (
               <div className="h-[200px] overflow-y-auto bg-slate-950 rounded-lg p-3 font-mono text-[11px] text-purple-300 whitespace-pre border border-purple-900/40 select-all leading-relaxed">

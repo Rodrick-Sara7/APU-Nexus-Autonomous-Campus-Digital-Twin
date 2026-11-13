@@ -97,18 +97,10 @@ export default function MobileIotSensorPage() {
 
   const currentStatus = getSeismicStatus(liveCoords.mag);
 
-  // Send packet to both HTTP bridge & Firebase
+  // Send packet to both HTTP bridge & Firebase via publishIotVibration
   const transmitTelemetry = useCallback(async (payload) => {
     const startTime = performance.now();
     try {
-      // 1. Post directly to /api/iot
-      fetch("/api/iot", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(payload),
-      }).catch(() => {});
-
-      // 2. Publish to Firebase pub-sub stream
       await publishIotVibration(payload);
       const rtt = Math.round(performance.now() - startTime);
       setLatencyMs(rtt > 0 ? rtt : 12);

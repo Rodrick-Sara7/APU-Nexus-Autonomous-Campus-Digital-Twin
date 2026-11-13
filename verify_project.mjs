@@ -138,56 +138,90 @@ async function runVerification() {
     throw new Error("CRITICAL: CAMERA_TAMPERING did not mark Server Room status as CRITICAL.");
   }
 
+  const crisisThermal = simulator.triggerCrisisMode("IOT_THERMAL_RUNAWAY", normalTick);
+  if (crisisThermal.zones["Server Room Core"].ac_temp_c !== 34.5) {
+    throw new Error("CRITICAL: IOT_THERMAL_RUNAWAY ac_temp_c did not spike to 34.5°C.");
+  }
+
+  const crisisEnergy = simulator.triggerCrisisMode("ENERGY_WASTE_ANOMALY", normalTick);
+  if (crisisEnergy.zones["APU Library Level 2"].power_usage_kw !== 145) {
+    throw new Error("CRITICAL: ENERGY_WASTE_ANOMALY power_usage_kw did not spike to 145kW.");
+  }
+
+  const fixedNetwork = simulator.applyAutonomousFix("NETWORK_STORM", crisis1);
+  if (fixedNetwork.zones["Block B - AI Labs"].status !== "HEALTHY") {
+    throw new Error("CRITICAL: applyAutonomousFix failed for NETWORK_STORM.");
+  }
+
+  const fixedThermal = simulator.applyAutonomousFix("IOT_THERMAL_RUNAWAY", crisisThermal);
+  if (fixedThermal.zones["Server Room Core"].status !== "HEALTHY") {
+    throw new Error("CRITICAL: applyAutonomousFix failed for IOT_THERMAL_RUNAWAY.");
+  }
+
+  const fixedEnergy = simulator.applyAutonomousFix("ENERGY_WASTE_ANOMALY", crisisEnergy);
+  if (fixedEnergy.zones["APU Library Level 2"].status !== "HEALTHY") {
+    throw new Error("CRITICAL: applyAutonomousFix failed for ENERGY_WASTE_ANOMALY.");
+  }
+
   const fixedSeismic = simulator.applyAutonomousFix("SEISMIC_ANOMALY", crisisSeismic);
   if (fixedSeismic.zones["Server Room Core"].vibration_g > 2) {
     throw new Error("CRITICAL: applyAutonomousFix failed to restore Server Room vibration.");
   }
-  console.log("  ✓ triggerCrisisMode verified for NETWORK_STORM, SEISMIC_ANOMALY, and CAMERA_TAMPERING.");
-  console.log("  ✓ applyAutonomousFix verified with healthy baseline restoration.");
+
+  const fixedCamera = simulator.applyAutonomousFix("CAMERA_TAMPERING", crisisCamera);
+  if (fixedCamera.zones["Server Room Core"].status !== "HEALTHY") {
+    throw new Error("CRITICAL: applyAutonomousFix failed for CAMERA_TAMPERING.");
+  }
+
+  console.log("  ✓ triggerCrisisMode verified for all 5 crisis modes (NETWORK_STORM, IOT_THERMAL_RUNAWAY, ENERGY_WASTE_ANOMALY, SEISMIC_ANOMALY, CAMERA_TAMPERING).");
+  console.log("  ✓ applyAutonomousFix verified for all 5 crisis modes with healthy baseline restoration.");
 
   // 5. Multi-Agent Gemini Brain & IaC Synthesis Check
-  console.log("\n[CHECK 5] Verifying /lib/gemini_agent.js 5-Agent pipeline, Discord alerts & IaC synthesis...");
+  console.log("\n[CHECK 5] Verifying /lib/gemini_agent.js 5-Agent pipeline, Discord alerts & IaC synthesis across all modes...");
   const agentModule = await import("./lib/gemini_agent.js");
   if (typeof agentModule.sendDiscordAlert !== "function") {
     throw new Error("CRITICAL: sendDiscordAlert is not exported from lib/gemini_agent.js");
   }
 
-  const testPayload = {
-    active_crisis: "CAMERA_TAMPERING",
-    zones: {
-      "Server Room Core": {
-        ac_temp_c: 21.0,
-        server_cpu: 60,
-        power_usage_kw: 65,
-      },
-    },
-  };
+  const testModes = [
+    "CAMERA_TAMPERING",
+    "SEISMIC_ANOMALY",
+    "NETWORK_STORM",
+    "IOT_THERMAL_RUNAWAY",
+    "ENERGY_WASTE_ANOMALY",
+    null,
+  ];
 
-  const diagnosis = await agentModule.analyzeCampusTelemetry(testPayload, "CAMERA_TAMPERING");
-  if (!diagnosis || typeof diagnosis !== "object") {
-    throw new Error("CRITICAL: analyzeCampusTelemetry did not return a valid object.");
+  for (const mode of testModes) {
+    const diag = await agentModule.analyzeCampusTelemetry({ active_crisis: mode }, mode);
+    if (
+      !diag ||
+      !diag.root_cause ||
+      !Array.isArray(diag.agent_chain) ||
+      diag.agent_chain.length !== 5 ||
+      !diag.remediation_command ||
+      !diag.iac_manifest
+    ) {
+      throw new Error(`CRITICAL: analyzeCampusTelemetry failed schema validation for mode: ${mode}`);
+    }
   }
-
-  if (
-    !diagnosis.root_cause ||
-    !Array.isArray(diagnosis.agent_chain) ||
-    diagnosis.agent_chain.length < 5 ||
-    !diagnosis.remediation_command ||
-    !diagnosis.iac_manifest
-  ) {
-    throw new Error("CRITICAL: analyzeCampusTelemetry returned schema that violates required structure.");
-  }
-  console.log(`  ✓ analyzeCampusTelemetry returned status: ${diagnosis.status}`);
-  console.log(`  ✓ 5-Agent pipeline generated ${diagnosis.agent_chain.length} autonomous thoughts.`);
-  console.log(`  ✓ Generated remediation command: ${diagnosis.remediation_command}`);
-  console.log(`  ✓ Synthesized IaC manifest verified (${diagnosis.iac_manifest.split("\n").length} lines).`);
-  console.log(`  ✓ Estimated savings calculated: RM ${diagnosis.estimated_savings_myr}`);
+  console.log("  ✓ analyzeCampusTelemetry verified across all 6 diagnostic branches (5 crisis modes + nominal).");
 
   // 6. Firebase Setup & Mobile IoT Vibration Stream Check
   console.log("\n[CHECK 6] Verifying /lib/firebase_setup.js pub-sub & IoT vibration bridge...");
   const firebaseModule = await import("./lib/firebase_setup.js");
   if (typeof firebaseModule.publishIotVibration !== "function" || typeof firebaseModule.subscribeIotVibration !== "function") {
     throw new Error("CRITICAL: publishIotVibration or subscribeIotVibration is not a function.");
+  }
+
+  let receivedTelemetry = null;
+  const unsubTel = firebaseModule.subscribeTelemetry((data) => {
+    receivedTelemetry = data;
+  });
+  await firebaseModule.publishTelemetry(baseline);
+  unsubTel();
+  if (!receivedTelemetry || !receivedTelemetry.zones) {
+    throw new Error("CRITICAL: publishTelemetry / subscribeTelemetry failed.");
   }
 
   let receivedIot = null;
@@ -200,7 +234,66 @@ async function runVerification() {
   if (!receivedIot || receivedIot.magnitude !== 8.4) {
     throw new Error("CRITICAL: Local IoT vibration pub-sub store did not dispatch published data.");
   }
-  console.log("  ✓ publishIotVibration and subscribeIotVibration verified in local fallback mode.");
+  console.log("  ✓ publishTelemetry, subscribeTelemetry, publishIotVibration, and subscribeIotVibration verified.");
+
+  // 7. Cross-Device Edge Isolation & Reset Verification (/api/iot)
+  console.log("\n[CHECK 7] Verifying /api/iot CCTV + Sensor isolation and RESET command...");
+  // Trigger CCTV sabotage
+  await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "CAMERA_TAMPERING", status: "critical", luminance: 4 }),
+    })
+  );
+  // Send a normal 1.0G sensor heartbeat while CCTV is tampered
+  const heartbeatAfterTamperRes = await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ magnitude: 1.0, seismic_alert: false, source: "standby_heartbeat" }),
+    })
+  );
+  const heartbeatState = await heartbeatAfterTamperRes.json();
+  if (!heartbeatState.camera_tampered || heartbeatState.active_crisis !== "CAMERA_TAMPERING") {
+    throw new Error("CRITICAL: Normal sensor heartbeat overwrote active CCTV camera_tampered state!");
+  }
+  console.log("  ✓ Verified sensor heartbeat does not overwrite active CCTV sabotage state.");
+
+  // Verify CCTV restoration clears camera_tampered
+  const cctvRestoreRes = await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "NOMINAL", status: "healthy", luminance: 128, source: "cctv_optical_sensor_restored" }),
+    })
+  );
+  const cctvRestoredState = await cctvRestoreRes.json();
+  if (cctvRestoredState.camera_tampered !== false || cctvRestoredState.active_crisis !== null) {
+    throw new Error("CRITICAL: CCTV restoration failed to clear camera_tampered flag!");
+  }
+  console.log("  ✓ Verified CCTV optical restoration cleanly clears camera_tampered flag.");
+
+  // Verify RESET action clears all alerts
+  await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ magnitude: 8.4, seismic_alert: true }),
+    })
+  );
+  const resetRes = await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "RESET" }),
+    })
+  );
+  const resetState = await resetRes.json();
+  if (resetState.seismic_alert !== false || resetState.camera_tampered !== false || resetState.active_crisis !== null) {
+    throw new Error("CRITICAL: POST /api/iot RESET failed to clear active hardware alerts!");
+  }
+  console.log("  ✓ Verified POST /api/iot RESET cleanly restores nominal state.");
 
   console.log("\n====================================================================");
   console.log("ALL MASTER VERIFICATION CHECKS PASSED (100% HEALTHY)");

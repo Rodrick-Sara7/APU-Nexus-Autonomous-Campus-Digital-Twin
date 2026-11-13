@@ -118,7 +118,21 @@ export default function SecurityCameraEdgeNode() {
         return;
       }
 
-      if (!videoRef.current || !canvasRef.current || !cameraActive) return;
+      if (!videoRef.current || !canvasRef.current || !cameraActive) {
+        if (isTamperedRef.current) {
+          setIsTampered(false);
+          setLuminance(128);
+          setStreamFps(0);
+          transmitSecurityEvent({
+            type: "NOMINAL",
+            status: "healthy",
+            zone: "Server Room Core",
+            luminance: 128,
+            source: "cctv_optical_sensor_restored",
+          });
+        }
+        return;
+      }
 
       const video = videoRef.current;
       const canvas = canvasRef.current;
@@ -292,15 +306,15 @@ export default function SecurityCameraEdgeNode() {
               {/* Invisible processing canvas */}
               <canvas ref={canvasRef} className="hidden" />
 
-              {/* If camera is not active */}
-              {!cameraActive && (
+              {/* If camera is not active and not simulating cover */}
+              {!cameraActive && !isSimulatingCover && (
                 <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center space-y-3 bg-slate-950/90">
                   <VideoOff className="w-12 h-12 text-slate-600" />
                   <p className="text-sm font-semibold text-slate-300">
                     Camera Stream Inactive
                   </p>
                   <p className="text-xs text-slate-500 max-w-sm">
-                    Click "Enable Surveillance Camera" below to grant permission and start the optical frame luminance analysis engine.
+                    Click &quot;Enable Surveillance Camera&quot; below to grant permission and start the optical frame luminance analysis engine.
                   </p>
                   <button
                     onClick={startCamera}
@@ -313,7 +327,7 @@ export default function SecurityCameraEdgeNode() {
               )}
 
               {/* Simulated cover black overlay */}
-              {cameraActive && isSimulatingCover && (
+              {isSimulatingCover && (
                 <div className="absolute inset-0 bg-black flex flex-col items-center justify-center text-center p-6 space-y-2">
                   <EyeOff className="w-12 h-12 text-rose-500 animate-pulse" />
                   <span className="text-sm font-bold text-rose-400 font-mono">

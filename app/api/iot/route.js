@@ -75,19 +75,53 @@ export async function POST(request) {
     const now = Date.now();
     let current = { ...globalThis.__campusState };
 
-    if (type === "CAMERA_TAMPERING" || type === "SECURITY_BREACH") {
-      const isCritical = status === "critical" || status === "CRITICAL" || !status;
+    if (type === "RESET") {
+      current = {
+        type: "NOMINAL",
+        status: "HEALTHY",
+        zone: "All APU Zones",
+        anomaly: null,
+        active_crisis: null,
+        crisis_type: null,
+        flag: "NORMAL",
+        x: 0.0,
+        y: 0.0,
+        z: 9.8,
+        magnitude: 1.0,
+        seismic_alert: false,
+        camera_tampered: false,
+        camera_luminance: 120,
+        device_connected: current.device_connected,
+        cctv_connected: current.cctv_connected,
+        last_updated: now,
+        source: source || "autonomous_remediation_reset",
+      };
+    } else if (
+      type === "CAMERA_TAMPERING" ||
+      type === "SECURITY_BREACH" ||
+      source?.startsWith("cctv_") ||
+      luminance !== undefined
+    ) {
+      const isCritical =
+        (type === "CAMERA_TAMPERING" || type === "SECURITY_BREACH") &&
+        (status === "critical" || status === "CRITICAL" || !status);
+      const effectiveAnomaly = isCritical
+        ? "CAMERA_TAMPERING"
+        : current.seismic_alert
+        ? "SEISMIC_ANOMALY"
+        : null;
+
       current = {
         ...current,
-        type: "CAMERA_TAMPERING",
-        status: isCritical ? "critical" : "healthy",
+        type: effectiveAnomaly || "NOMINAL",
+        status: isCritical ? "critical" : current.seismic_alert ? "critical" : "healthy",
         zone: zone || "Server Room Core",
-        anomaly: isCritical ? "CAMERA_TAMPERING" : null,
-        active_crisis: isCritical ? "CAMERA_TAMPERING" : null,
-        crisis_type: isCritical ? "CAMERA_TAMPERING" : null,
-        flag: isCritical ? "CAMERA_TAMPERING" : "NORMAL",
+        anomaly: effectiveAnomaly,
+        active_crisis: effectiveAnomaly,
+        crisis_type: effectiveAnomaly,
+        flag: effectiveAnomaly || "NORMAL",
         camera_tampered: isCritical,
-        camera_luminance: luminance !== undefined ? Number(luminance) : (isCritical ? 8 : 120),
+        camera_luminance: luminance !== undefined ? Number(luminance) : isCritical ? 8 : 120,
         cctv_connected: true,
         last_updated: now,
         source: source || "cctv_edge_node",
@@ -103,17 +137,22 @@ export async function POST(request) {
         type === "SEISMIC_ANOMALY" ||
         magNumber >= 3.5
       );
-      const anomalyFlag = isAlert ? "SEISMIC_ANOMALY" : null;
+      // Preserve active camera tampering if CCTV sabotage is still active
+      const effectiveAnomaly = isAlert
+        ? "SEISMIC_ANOMALY"
+        : current.camera_tampered
+        ? "CAMERA_TAMPERING"
+        : null;
 
       current = {
         ...current,
-        type: isAlert ? "SEISMIC_ANOMALY" : (type || "NOMINAL"),
-        status: isAlert ? (status || "SEISMIC_ANOMALY") : "HEALTHY",
+        type: isAlert ? "SEISMIC_ANOMALY" : current.camera_tampered ? "CAMERA_TAMPERING" : type || "NOMINAL",
+        status: isAlert ? status || "SEISMIC_ANOMALY" : current.camera_tampered ? "critical" : "HEALTHY",
         zone: zone || (isAlert ? "Block B - AI Labs" : current.zone),
-        anomaly: anomalyFlag,
-        active_crisis: anomalyFlag,
-        crisis_type: anomalyFlag,
-        flag: isAlert ? "SEISMIC_ANOMALY" : "NORMAL",
+        anomaly: effectiveAnomaly,
+        active_crisis: effectiveAnomaly,
+        crisis_type: effectiveAnomaly,
+        flag: isAlert ? "SEISMIC_ANOMALY" : current.camera_tampered ? "CAMERA_TAMPERING" : "NORMAL",
         magnitude: magNumber,
         seismic_alert: isAlert,
         x: Number(Number(x).toFixed(2)),
