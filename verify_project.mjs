@@ -274,14 +274,25 @@ async function runVerification() {
   }
   console.log("  ✓ Verified CCTV optical restoration cleanly clears camera_tampered flag.");
 
-  // Verify RESET action clears all alerts
+  // Verify RESET action clears all alerts and passive heartbeat preserves seismic_alert latch
   await iotRoute.POST(
     new Request("http://localhost:3000/api/iot", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ magnitude: 8.4, seismic_alert: true }),
+      body: JSON.stringify({ magnitude: 8.4, seismic_alert: true, source: "simulated_8.4G_tap" }),
     })
   );
+  const passiveAfterShakeRes = await iotRoute.POST(
+    new Request("http://localhost:3000/api/iot", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ magnitude: 1.0, seismic_alert: false, source: "standby_heartbeat" }),
+    })
+  );
+  const passiveAfterShakeState = await passiveAfterShakeRes.json();
+  if (!passiveAfterShakeState.seismic_alert || passiveAfterShakeState.active_crisis !== "SEISMIC_ANOMALY") {
+    throw new Error("CRITICAL: Passive standby_heartbeat prematurely cleared active seismic_alert latch before dashboard navigation!");
+  }
   const resetRes = await iotRoute.POST(
     new Request("http://localhost:3000/api/iot", {
       method: "POST",
@@ -293,7 +304,7 @@ async function runVerification() {
   if (resetState.seismic_alert !== false || resetState.camera_tampered !== false || resetState.active_crisis !== null) {
     throw new Error("CRITICAL: POST /api/iot RESET failed to clear active hardware alerts!");
   }
-  console.log("  ✓ Verified POST /api/iot RESET cleanly restores nominal state.");
+  console.log("  ✓ Verified seismic_alert latch across passive heartbeats and POST /api/iot RESET nominal restoration.");
 
   // 8. Final Hackathon Winning Polish Verification (HITL, Voice, Open-Meteo, Commander, Export)
   console.log("\n[CHECK 8] Verifying 5 Hackathon Winning Polish features...");

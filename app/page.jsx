@@ -241,13 +241,12 @@ export default function APUNexusDashboard() {
     setVoiceEnabled((prev) => {
       const next = !prev;
       voiceEnabledRef.current = next;
-      if (
-        !next &&
-        typeof window !== "undefined" &&
-        typeof window.speechSynthesis !== "undefined"
-      ) {
+      if (typeof window !== "undefined") {
         try {
-          window.speechSynthesis.cancel();
+          window.sessionStorage.setItem("apu_nexus_voice_enabled", String(next));
+          if (!next && typeof window.speechSynthesis !== "undefined") {
+            window.speechSynthesis.cancel();
+          }
         } catch {}
       }
       appendLog(
@@ -262,6 +261,11 @@ export default function APUNexusDashboard() {
     setAutoHealMode((prev) => {
       const next = !prev;
       autoHealRef.current = next;
+      if (typeof window !== "undefined") {
+        try {
+          window.sessionStorage.setItem("apu_nexus_auto_heal_mode", String(next));
+        } catch {}
+      }
       appendLog(
         next
           ? "Governance Mode switched to Full Autonomous (Auto-Heal)."
@@ -275,6 +279,22 @@ export default function APUNexusDashboard() {
   // Initialize client mount & subscription
   useEffect(() => {
     setMounted(true);
+    if (typeof window !== "undefined") {
+      try {
+        const savedAutoHeal = window.sessionStorage.getItem("apu_nexus_auto_heal_mode");
+        if (savedAutoHeal === "false" || savedAutoHeal === "true") {
+          const parsedMode = savedAutoHeal === "true";
+          autoHealRef.current = parsedMode;
+          setAutoHealMode(parsedMode);
+        }
+        const savedVoice = window.sessionStorage.getItem("apu_nexus_voice_enabled");
+        if (savedVoice === "false" || savedVoice === "true") {
+          const parsedVoice = savedVoice === "true";
+          voiceEnabledRef.current = parsedVoice;
+          setVoiceEnabled(parsedVoice);
+        }
+      } catch {}
+    }
     appendLog("APU-Nexus Autonomous Controller initialized.", "INFO");
     appendLog(
       isFirebaseLive
@@ -1106,7 +1126,9 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
     campusState.active_crisis === CRISIS_TYPES.SEISMIC_ANOMALY ||
     campusState.active_crisis === "SEISMIC_ANOMALY";
   const isFixDeployed =
-    !pendingApproval && (campusState.overall_status === "REMEDIATED" || isRemediating);
+    !pendingApproval &&
+    (campusState.overall_status === "REMEDIATED" ||
+      (isRemediating && activeAgentIndex >= 4));
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">

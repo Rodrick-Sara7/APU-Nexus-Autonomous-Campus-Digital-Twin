@@ -132,11 +132,24 @@ export async function POST(request) {
         magnitude !== undefined
           ? Number(Number(magnitude).toFixed(2))
           : current.magnitude;
+      const isPassiveHeartbeat =
+        source === "standby_heartbeat" || source === "stabilized";
+      const isRecentSeismicLatch =
+        Boolean(current.seismic_alert) &&
+        Boolean(current.last_updated) &&
+        now - current.last_updated < 60000;
+
       const isAlert = Boolean(
         seismic_alert ||
-        type === "SEISMIC_ANOMALY" ||
-        magNumber >= 3.5
+          type === "SEISMIC_ANOMALY" ||
+          magNumber >= 3.5 ||
+          (isPassiveHeartbeat && isRecentSeismicLatch)
       );
+      const effectiveMag =
+        isPassiveHeartbeat && isRecentSeismicLatch && magNumber < 3.5
+          ? current.magnitude
+          : magNumber;
+
       // Preserve active camera tampering if CCTV sabotage is still active
       const effectiveAnomaly = isAlert
         ? "SEISMIC_ANOMALY"
@@ -153,13 +166,13 @@ export async function POST(request) {
         active_crisis: effectiveAnomaly,
         crisis_type: effectiveAnomaly,
         flag: isAlert ? "SEISMIC_ANOMALY" : current.camera_tampered ? "CAMERA_TAMPERING" : "NORMAL",
-        magnitude: magNumber,
+        magnitude: effectiveMag,
         seismic_alert: isAlert,
         x: Number(Number(x).toFixed(2)),
         y: Number(Number(y).toFixed(2)),
         z: Number(Number(z).toFixed(2)),
         device_connected: true,
-        last_updated: now,
+        last_updated: isPassiveHeartbeat && isRecentSeismicLatch ? current.last_updated : now,
         source: source || (type === "SEISMIC_ANOMALY" ? "mobile_hardware" : "mobile_sensor"),
       };
     }

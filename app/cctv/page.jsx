@@ -384,8 +384,38 @@ export default function SecurityCameraEdgeNode() {
 
                 {/* Instant lens cover simulator button (for testing without physical occlusion) */}
                 <button
-                  onClick={() => setIsSimulatingCover(!isSimulatingCover)}
-                  className={`px-3.5 py-2 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 ${
+                  type="button"
+                  onClick={() => {
+                    const nextCover = !isSimulatingCover;
+                    isSimulatingCoverRef.current = nextCover;
+                    setIsSimulatingCover(nextCover);
+                    if (nextCover) {
+                      isTamperedRef.current = true;
+                      setIsTampered(true);
+                      setLuminance(4);
+                      setStreamFps(2);
+                      transmitSecurityEvent({
+                        type: "CAMERA_TAMPERING",
+                        status: "critical",
+                        zone: "Server Room Core",
+                        luminance: 4,
+                        source: "cctv_optical_sensor_lens_obscured",
+                      });
+                    } else {
+                      isTamperedRef.current = false;
+                      setIsTampered(false);
+                      setLuminance(128);
+                      if (!cameraActive) setStreamFps(0);
+                      transmitSecurityEvent({
+                        type: "NOMINAL",
+                        status: "healthy",
+                        zone: "Server Room Core",
+                        luminance: 128,
+                        source: "cctv_optical_sensor_restored",
+                      });
+                    }
+                  }}
+                  className={`px-3.5 py-2 rounded-lg border text-xs font-semibold transition flex items-center gap-1.5 cursor-pointer ${
                     isSimulatingCover
                       ? "bg-rose-600 border-rose-500 text-white animate-pulse"
                       : "bg-slate-800 hover:bg-slate-700 border-slate-700 text-slate-300"
