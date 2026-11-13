@@ -529,7 +529,7 @@ export default function MobileIotSensorPage() {
             </div>
             <div className="mt-2 text-3xl font-extrabold font-mono text-white tracking-tight flex items-baseline justify-between">
               <div>
-                {liveCoords.mag} <span className="text-sm font-normal text-slate-400">G</span>
+                {Number(liveCoords.mag).toFixed(2)} <span className="text-sm font-normal text-slate-400">G</span>
               </div>
             </div>
             <div className="mt-2 pt-2 border-t border-slate-800/80 flex items-center justify-between">

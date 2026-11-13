@@ -1200,82 +1200,19 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             type="button"
             onClick={handleToggleVoice}
             title="Toggle Live NOC Web Speech Voice Incident Briefings"
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono whitespace-nowrap transition shadow-sm ${
               voiceEnabled
                 ? "bg-cyan-950/60 hover:bg-cyan-900/60 border-cyan-500/50 text-cyan-200"
                 : "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-400"
             }`}
           >
             {voiceEnabled ? (
-              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+              <Volume2 className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
             ) : (
-              <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+              <VolumeX className="w-3.5 h-3.5 text-slate-500 shrink-0" />
             )}
             <span>{voiceEnabled ? "🔊 Voice NOC: ON" : "🔇 Voice NOC: OFF"}</span>
           </button>
-
-          {/* CCTV Vision Edge Node Badge */}
-          <Link
-            href="/cctv"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
-              edgeHardwareData.camera_tampered
-                ? "bg-rose-950/60 border-rose-500 text-rose-300 animate-pulse"
-                : "bg-slate-900/80 hover:bg-slate-850 border-slate-700 text-slate-300"
-            }`}
-            title="Open Vision Edge Camera Node (/cctv)"
-          >
-            <Video
-              className={`w-3.5 h-3.5 ${
-                edgeHardwareData.camera_tampered ? "text-rose-400" : "text-rose-400/80"
-              }`}
-            />
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  edgeHardwareData.camera_tampered
-                    ? "bg-rose-500 animate-ping"
-                    : edgeHardwareData.cctv_connected
-                    ? "bg-emerald-400"
-                    : "bg-slate-500"
-                }`}
-              />
-              <span>
-                CCTV: {edgeHardwareData.camera_tampered ? "SABOTAGE (<15)" : "Active"}
-              </span>
-            </div>
-            <ExternalLink className="w-3 h-3 text-slate-400" />
-          </Link>
-
-          {/* Mobile IoT Edge Sensor Badge */}
-          <Link
-            href="/sensor"
-            className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
-              edgeHardwareData.magnitude > 3.0 || edgeHardwareData.seismic_alert
-                ? "bg-purple-950/60 border-purple-500 text-purple-300 animate-pulse"
-                : "bg-slate-900/80 hover:bg-slate-850 border-slate-700 text-slate-300"
-            }`}
-            title="Open Mobile Hardware Accelerometer Web App (/sensor)"
-          >
-            <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-            <div className="flex items-center gap-1.5">
-              <span
-                className={`w-2 h-2 rounded-full ${
-                  edgeHardwareData.magnitude > 3.0 || edgeHardwareData.seismic_alert
-                    ? "bg-rose-500 animate-ping"
-                    : edgeHardwareData.device_connected
-                    ? "bg-emerald-400"
-                    : "bg-slate-500"
-                }`}
-              />
-              <span>
-                Sensor:{" "}
-                {edgeHardwareData.device_connected
-                  ? `${edgeHardwareData.magnitude?.toFixed(1)}G`
-                  : "Standby"}
-              </span>
-            </div>
-            <ExternalLink className="w-3 h-3 text-cyan-400/80" />
-          </Link>
 
           {/* FinOps Counter */}
           <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-gradient-to-r from-emerald-950/60 to-cyan-950/40 border border-emerald-500/30 text-xs font-mono text-emerald-300 shadow-sm">
@@ -1399,7 +1336,7 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
 
             {/* Feature 3: Live Bukit Jalil Ambient Weather Correlation Badge */}
             <div
-              className="flex flex-wrap items-center gap-2 px-3 py-1 rounded-lg bg-sky-950/40 border border-sky-500/30 text-[11px] font-mono text-sky-200 shadow-sm"
+              className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-sky-950/40 border border-sky-500/30 text-xs font-mono text-sky-200 whitespace-nowrap shadow-sm"
               title="Live Open-Meteo tropical ambient telemetry correlated against APU HVAC chiller loads & ESG carbon footprint"
             >
               <CloudSun className="w-3.5 h-3.5 text-amber-300 shrink-0" />
@@ -1414,23 +1351,23 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
           </div>
 
           {/* Second Row: Edge Links & Governance / Action Controls */}
-          <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap items-center justify-between gap-2.5">
             <div className="flex flex-wrap items-center gap-2">
               {/* Direct Link to CCTV node */}
               <Link
                 href="/cctv"
-                className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-medium transition flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-medium whitespace-nowrap transition flex items-center gap-1.5"
               >
-                <Video className="w-3.5 h-3.5 text-rose-400" />
+                <Video className="w-3.5 h-3.5 text-rose-400 shrink-0" />
                 Surveillance Camera (/cctv)
               </Link>
 
               {/* Direct Link to Accelerometer node */}
               <Link
                 href="/sensor"
-                className="px-3 py-1.5 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-200 text-xs font-medium transition flex items-center gap-1.5"
+                className="px-3 py-1.5 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-200 text-xs font-medium whitespace-nowrap transition flex items-center gap-1.5"
               >
-                <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                <Smartphone className="w-3.5 h-3.5 text-cyan-400 shrink-0" />
                 Mobile Accelerometer (/sensor)
               </Link>
 
@@ -1438,9 +1375,9 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               <button
                 type="button"
                 onClick={() => setShowManualOverrides(!showManualOverrides)}
-                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition flex items-center gap-1"
+                className="px-3 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium whitespace-nowrap transition flex items-center gap-1"
               >
-                <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                <Sliders className="w-3.5 h-3.5 text-slate-400 shrink-0" />
                 <span>Overrides</span>
                 <ChevronDown
                   className={`w-3 h-3 transition-transform ${
@@ -1455,7 +1392,7 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               <button
                 type="button"
                 onClick={handleToggleGovernanceMode}
-                className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                className={`px-3 py-1.5 rounded-md border text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
                   autoHealMode
                     ? "bg-emerald-950/60 hover:bg-emerald-900/60 border-emerald-500/60 text-emerald-200"
                     : "bg-amber-950/70 hover:bg-amber-900/70 border-amber-400/70 text-amber-200 shadow-amber-500/10"
@@ -1472,7 +1409,7 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               <button
                 type="button"
                 onClick={handleExportAuditReport}
-                className="px-3 py-1.5 rounded-md bg-indigo-600/80 hover:bg-indigo-500 text-white border border-indigo-400/50 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+                className="px-3 py-1.5 rounded-md bg-indigo-600/80 hover:bg-indigo-500 text-white border border-indigo-400/50 text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 shadow-sm cursor-pointer"
               >
                 [📄 Export Audit &amp; ESG Report]
               </button>
@@ -1482,9 +1419,9 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
                 type="button"
                 onClick={handleManualRemediate}
                 disabled={isRemediating || (!isCrisisActive && !pendingApproval)}
-                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-sm shadow-emerald-500/20"
+                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold whitespace-nowrap transition flex items-center gap-1.5 disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-sm shadow-emerald-500/20"
               >
-                <Play className="w-3.5 h-3.5" />
+                <Play className="w-3.5 h-3.5 shrink-0" />
                 {pendingApproval ? "Approve Fix" : "Manual Execute Fix"}
               </button>
 
