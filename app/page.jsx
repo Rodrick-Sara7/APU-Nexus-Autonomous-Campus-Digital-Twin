@@ -103,6 +103,7 @@ export default function APUNexusDashboard() {
   // Feature 4: Natural-Language "Ask APU-Nexus" AI Commander Bar
   const [commanderQuery, setCommanderQuery] = useState("");
   const [commanderReply, setCommanderReply] = useState(null);
+  const [commanderSource, setCommanderSource] = useState("fallback");
   const [isAskingCommander, setIsAskingCommander] = useState(false);
 
   const [isRemediating, setIsRemediating] = useState(false);
@@ -897,6 +898,7 @@ export default function APUNexusDashboard() {
         data.commander_reply ||
         data.root_cause ||
         "APU-Nexus Commander analyzed live telemetry.";
+      setCommanderSource(data.source === "gemini" ? "gemini" : "fallback");
       setCommanderReply({
         query: queryText,
         reply,
@@ -907,6 +909,7 @@ export default function APUNexusDashboard() {
         "GEMINI"
       );
     } catch (err) {
+      setCommanderSource("fallback");
       setCommanderReply({
         query: queryText,
         reply: `Live fallback response (${stateRef.current.overall_status}): ${stateRef.current.total_power_kw} kW total draw, RM ${stateRef.current.monthly_savings_myr?.toLocaleString()} monthly savings. (${err.message})`,
@@ -1701,7 +1704,9 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               </div>
             </div>
             <span className="text-[11px] text-slate-400 font-mono">
-              Zero-Key Hybrid Inference • Real-Time Digital Twin Query Engine
+              {commanderSource === "gemini"
+                ? "Live Gemini 2.5 Flash • Real-Time Digital Twin Query Engine"
+                : "Zero-Key Hybrid Inference • Real-Time Digital Twin Query Engine"}
             </span>
           </div>
 

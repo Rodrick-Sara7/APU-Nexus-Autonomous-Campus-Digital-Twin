@@ -1,6 +1,6 @@
 import {
   analyzeCampusTelemetry,
-  answerCommanderQuery,
+  answerCommanderQueryWithMeta,
 } from "../../../lib/gemini_agent.js";
 
 /**
@@ -14,7 +14,7 @@ export async function POST(request) {
     const { telemetry, crisisType, userQuery, weather } = body;
 
     if (typeof userQuery === "string" && userQuery.trim().length > 0) {
-      const commander_reply = await answerCommanderQuery(
+      const { reply: commander_reply, source } = await answerCommanderQueryWithMeta(
         telemetry,
         userQuery.trim(),
         weather || null
@@ -23,6 +23,7 @@ export async function POST(request) {
       return Response.json(
         {
           commander_reply,
+          source,
           query: userQuery.trim(),
           status: "ok",
           timestamp: new Date().toISOString(),
@@ -53,6 +54,7 @@ export async function POST(request) {
         affected_zone: "All APU Zones",
         root_cause: error.message || "Failed to process telemetry payload.",
         commander_reply: `Controller fallback notice: ${error.message || "Unable to complete AI Commander query right now."}`,
+        source: "fallback",
         confidence_score: 0.85,
         agent_chain: [
           {
