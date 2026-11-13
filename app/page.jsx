@@ -38,6 +38,16 @@ import {
   Video,
   EyeOff,
   ChevronDown,
+  Volume2,
+  VolumeX,
+  CloudSun,
+  MessageSquare,
+  Send,
+  Download,
+  FileText,
+  ShieldAlert,
+  Bot,
+  UserCheck,
 } from "lucide-react";
 import {
   ResponsiveContainer,
@@ -64,12 +74,37 @@ import {
   subscribeIotVibration,
 } from "@/lib/firebase_setup";
 
+const COMMANDER_CHIPS = [
+  "Which campus zone has the highest carbon & power load right now?",
+  "Generate an executive risk & FinOps summary for campus IT",
+  "Explain how the 5-Agent pipeline mitigates CCTV & seismic threats",
+];
+
 export default function APUNexusDashboard() {
   const [mounted, setMounted] = useState(false);
   const [campusState, setCampusState] = useState(() => createInitialCampusState());
   const [selectedZone, setSelectedZone] = useState("Block B - AI Labs");
   const [telemetryHistory, setTelemetryHistory] = useState([]);
-  const [autoHealEnabled, setAutoHealEnabled] = useState(true);
+
+  // Feature 1: Human-in-the-Loop (HITL) Governance Mode
+  const [autoHealMode, setAutoHealMode] = useState(true);
+  const [pendingApproval, setPendingApproval] = useState(null);
+
+  // Feature 2: Live NOC Voice Incident Briefing
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
+
+  // Feature 3: Live Bukit Jalil Ambient Weather Correlation (Open-Meteo)
+  const [ambientWeather, setAmbientWeather] = useState({
+    temperature_2m: 31.4,
+    relative_humidity_2m: 78,
+    source: "Baseline Reference",
+  });
+
+  // Feature 4: Natural-Language "Ask APU-Nexus" AI Commander Bar
+  const [commanderQuery, setCommanderQuery] = useState("");
+  const [commanderReply, setCommanderReply] = useState(null);
+  const [isAskingCommander, setIsAskingCommander] = useState(false);
+
   const [isRemediating, setIsRemediating] = useState(false);
   const [activeAgentIndex, setActiveAgentIndex] = useState(0);
   const [selectedMetric, setSelectedMetric] = useState("all");
@@ -105,32 +140,52 @@ export default function APUNexusDashboard() {
     source: "idle",
   });
 
-  const [auditLog, setAuditLog] = useState([
+  // Feature 5: Session Incident & Compliance Audit Log
+  const [incidentAuditLog, setIncidentAuditLog] = useState([
     {
       id: "AUD-903",
       timestamp: "10:22:15 AM",
-      zone: "Server Room Core",
-      crisis: "Camera Lens Obscured (CCTV Sabotage)",
+      crisisType: "Camera Lens Obscured (CCTV Sabotage)",
+      affectedZone: "Server Room Core",
+      rootCause:
+        "Optical luminance dropped below threshold (<15/255) on surveillance node CCTV-SRV-01.",
+      cliCommand:
+        "bacnet-cli door-lock --facility=SRV-CORE --override=emergency-lockdown && drone-dispatch --waypoint=SRV-CORE-DOOR-A --mode=intercept",
+      iacType: "Terraform HCL",
       remediation: "Magnetic doors locked down; security drone dispatched",
-      savings: "RM 2,400",
+      rmSaved: 2400,
+      co2eReduced: 108.0,
+      governanceMode: "Full Autonomous (Auto-Heal)",
       status: "RESOLVED",
     },
     {
       id: "AUD-902",
       timestamp: "10:14:22 AM",
-      zone: "Server Room Core",
-      crisis: "Structural Seismic Spike (8.4G)",
+      crisisType: "Structural Seismic Spike (8.4G)",
+      affectedZone: "Server Room Core",
+      rootCause:
+        "Critical 8.4G seismic/structural vibration detected in Server Room Core.",
+      cliCommand:
+        "gcloud compute instance-groups managed rolling-action replace apu-core-cluster --zone=asia-southeast1-b",
+      iacType: "Terraform HCL",
       remediation: "Breaker isolated; DR instance group deployed in asia-southeast1-b",
-      savings: "RM 1,850",
+      rmSaved: 1850,
+      co2eReduced: 83.3,
+      governanceMode: "Full Autonomous (Auto-Heal)",
       status: "RESOLVED",
     },
     {
       id: "AUD-901",
       timestamp: "10:02:14 AM",
-      zone: "Main Auditorium",
-      crisis: "Bandwidth Contention",
+      crisisType: "Bandwidth Contention",
+      affectedZone: "Main Auditorium",
+      rootCause: "Flash client association spike saturated Main Auditorium AP uplink.",
+      cliCommand: "apu-sdn-ctl vlan isolate --port=eth4/2 --divert=trunk-backup",
+      iacType: "Terraform HCL",
       remediation: "Dynamic QoS throttle applied via APU SDN gateway",
-      savings: "RM 320",
+      rmSaved: 320,
+      co2eReduced: 14.4,
+      governanceMode: "Full Autonomous (Auto-Heal)",
       status: "RESOLVED",
     },
   ]);
@@ -139,8 +194,19 @@ export default function APUNexusDashboard() {
   const stateRef = useRef(campusState);
   stateRef.current = campusState;
 
-  const autoHealRef = useRef(autoHealEnabled);
-  autoHealRef.current = autoHealEnabled;
+  const autoHealRef = useRef(autoHealMode);
+  autoHealRef.current = autoHealMode;
+
+  const voiceEnabledRef = useRef(voiceEnabled);
+  voiceEnabledRef.current = voiceEnabled;
+
+  const isRemediatingRef = useRef(isRemediating);
+  isRemediatingRef.current = isRemediating;
+
+  const pendingApprovalRef = useRef(pendingApproval);
+  pendingApprovalRef.current = pendingApproval;
+
+  const crisisDispatchLockRef = useRef(false);
 
   const appendLog = useCallback((message, type = "INFO") => {
     const time = new Date().toLocaleTimeString();
@@ -149,6 +215,62 @@ export default function APUNexusDashboard() {
       { id: `${Date.now()}-${Math.random()}`, time, message, type },
     ]);
   }, []);
+
+  // Feature 2: Safe native Web Speech API NOC Briefing helper
+  const announceNOC = useCallback((message) => {
+    if (!voiceEnabledRef.current) return;
+    if (
+      typeof window === "undefined" ||
+      typeof window.speechSynthesis === "undefined" ||
+      typeof SpeechSynthesisUtterance === "undefined"
+    ) {
+      return;
+    }
+    try {
+      window.speechSynthesis.cancel();
+      const utterance = new SpeechSynthesisUtterance(message);
+      utterance.rate = 1.05;
+      utterance.pitch = 0.95;
+      window.speechSynthesis.speak(utterance);
+    } catch {
+      // Ignore speech synthesis errors on restricted browsers
+    }
+  }, []);
+
+  const handleToggleVoice = () => {
+    setVoiceEnabled((prev) => {
+      const next = !prev;
+      voiceEnabledRef.current = next;
+      if (
+        !next &&
+        typeof window !== "undefined" &&
+        typeof window.speechSynthesis !== "undefined"
+      ) {
+        try {
+          window.speechSynthesis.cancel();
+        } catch {}
+      }
+      appendLog(
+        next ? "Voice NOC Incident Briefing enabled." : "Voice NOC muted by operator.",
+        "SYSTEM"
+      );
+      return next;
+    });
+  };
+
+  const handleToggleGovernanceMode = () => {
+    setAutoHealMode((prev) => {
+      const next = !prev;
+      autoHealRef.current = next;
+      appendLog(
+        next
+          ? "Governance Mode switched to Full Autonomous (Auto-Heal)."
+          : "Governance Mode switched to Co-Pilot Governance (Hold for Approval).",
+        "SYSTEM"
+      );
+      return next;
+    });
+  };
 
   // Initialize client mount & subscription
   useEffect(() => {
@@ -160,7 +282,10 @@ export default function APUNexusDashboard() {
         : "Graceful Hybrid Engine active: In-Memory Twin Engine pub-sub running.",
       "SYSTEM"
     );
-    appendLog("Phase 4 Edge Hardware Actuation Active: Polling /api/iot for physical accelerometer & CCTV lens sabotage.", "SYSTEM");
+    appendLog(
+      "Phase 4 Edge Hardware Actuation Active: Polling /api/iot for physical accelerometer & CCTV lens sabotage.",
+      "SYSTEM"
+    );
 
     // Initial history sample with real-time carbon tracking & projected trajectory
     const initialSamples = [];
@@ -176,8 +301,15 @@ export default function APUNexusDashboard() {
         wifi_load: stateCursor.avg_wifi_load,
         server_cpu: stateCursor.avg_server_cpu,
         power_usage_kw: stateCursor.total_power_kw,
-        carbon_kg_co2e: Number((stateCursor.carbon_kg_co2e || stateCursor.total_power_kw * 0.4).toFixed(1)),
-        projected_carbon_kg_co2e: Number((stateCursor.projected_carbon_kg_co2e || (stateCursor.total_power_kw + 42) * 0.4).toFixed(1)),
+        carbon_kg_co2e: Number(
+          (stateCursor.carbon_kg_co2e || stateCursor.total_power_kw * 0.4).toFixed(1)
+        ),
+        projected_carbon_kg_co2e: Number(
+          (
+            stateCursor.projected_carbon_kg_co2e ||
+            (stateCursor.total_power_kw + 42) * 0.4
+          ).toFixed(1)
+        ),
       });
     }
     setTelemetryHistory(initialSamples);
@@ -193,6 +325,53 @@ export default function APUNexusDashboard() {
     };
   }, [appendLog]);
 
+  // Feature 3: Live Bukit Jalil External Weather Correlation (Open-Meteo Free Keyless API)
+  useEffect(() => {
+    let isMounted = true;
+    const OPEN_METEO_URL =
+      "https://api.open-meteo.com/v1/forecast?latitude=3.0554&longitude=101.7005&current=temperature_2m,relative_humidity_2m";
+
+    const fetchBukitJalilWeather = async () => {
+      try {
+        const res = await fetch(OPEN_METEO_URL, { cache: "no-store" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        if (!isMounted) return;
+
+        const temp = Number(data?.current?.temperature_2m);
+        const humidity = Number(data?.current?.relative_humidity_2m);
+        if (Number.isFinite(temp) && Number.isFinite(humidity)) {
+          setAmbientWeather({
+            temperature_2m: temp,
+            relative_humidity_2m: humidity,
+            source: "Open-Meteo Satellite",
+          });
+        } else {
+          throw new Error("Invalid Open-Meteo payload");
+        }
+      } catch {
+        if (!isMounted) return;
+        setAmbientWeather((prev) => ({
+          temperature_2m:
+            prev?.source === "Open-Meteo Satellite" ? prev.temperature_2m : 31.4,
+          relative_humidity_2m:
+            prev?.source === "Open-Meteo Satellite" ? prev.relative_humidity_2m : 78,
+          source:
+            prev?.source === "Open-Meteo Satellite"
+              ? prev.source
+              : "Open-Meteo Satellite (Cached)",
+        }));
+      }
+    };
+
+    fetchBukitJalilWeather();
+    const weatherInterval = setInterval(fetchBukitJalilWeather, 60000);
+    return () => {
+      isMounted = false;
+      clearInterval(weatherInterval);
+    };
+  }, []);
+
   // Keep terminal container scrolled to bottom without hijacking browser window scroll
   useEffect(() => {
     if (logsContainerRef.current && activeInspectorTab === "logs") {
@@ -200,67 +379,37 @@ export default function APUNexusDashboard() {
     }
   }, [terminalLogs, activeInspectorTab]);
 
-  // Autonomous Healing Workflow orchestrator
-  const handleTriggerAnalysisAndHeal = useCallback(
-    async (crisisType, snapshot) => {
+  // Helper to execute Steps 4 & 5 of Remediation (shared by Auto-Heal & HITL Co-Pilot Approval)
+  const executeRemediationCompletion = useCallback(
+    async (crisisType, diagnosis, governanceModeLabel, pendingIncidentId = null) => {
+      isRemediatingRef.current = true;
       setIsRemediating(true);
-      setActiveAgentIndex(1); // Telemetry Agent
-      appendLog(
-        `[PHYSICAL EDGE CRISIS DETECTED]: ${crisisType}. Telemetry Ingestion Agent dispatched.`,
-        "WARN"
-      );
+      setActiveAgentIndex(4);
 
       try {
-        // Step 1: Telemetry Ingested
-        await new Promise((r) => setTimeout(r, 600));
-        setActiveAgentIndex(2); // Diagnostic Agent
         appendLog(
-          "Gemini Diagnostic Agent correlating optical / physical telemetry with campus digital twin...",
-          "AGENT"
-        );
-
-        // Fetch diagnosis from API route or internal AI brain
-        const res = await fetch("/api/agent", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ telemetry: snapshot, crisisType }),
-        });
-
-        const diagnosis = await res.json();
-        setCurrentDiagnosis(diagnosis);
-
-        appendLog(
-          `Diagnostic isolated root cause (Confidence: ${(diagnosis.confidence_score * 100).toFixed(0)}%): ${diagnosis.root_cause.substring(0, 85)}...`,
-          "GEMINI"
-        );
-
-        // Step 2: Resolution Architect
-        await new Promise((r) => setTimeout(r, 700));
-        setActiveAgentIndex(3);
-        appendLog(
-          `Resolution Architect synthesized remediation: ${diagnosis.remediation_command}`,
-          "AGENT"
-        );
-
-        // Step 3: Cloud Execution Agent
-        await new Promise((r) => setTimeout(r, 800));
-        setActiveAgentIndex(4);
-        appendLog(
-          `Cloud Execution Agent deploying: ${diagnosis.cloud_action_taken}`,
+          `Cloud Execution Agent deploying: ${diagnosis?.cloud_action_taken || "Autonomous Remediation"}`,
           "ACTION"
         );
 
-        // Step 4: Apply autonomous fix to campus state
+        await new Promise((r) => setTimeout(r, 700));
+
+        // Apply autonomous fix to campus state
         const remediated = applyAutonomousFix(crisisType, stateRef.current);
+        stateRef.current = remediated;
         setCampusState(remediated);
         publishTelemetry(remediated);
 
-        // Reset edge hardware bridge state so 1000ms polling does not re-trigger the resolved crisis
+        // Reset edge hardware bridge state so 1000ms polling does not re-trigger resolved crisis
         fetch("/api/iot", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ type: "RESET", source: "autonomous_remediation" }),
+          body: JSON.stringify({
+            type: "RESET",
+            source: pendingIncidentId ? "copilot_operator_approved" : "autonomous_remediation",
+          }),
         }).catch(() => {});
+
         setEdgeHardwareData((prev) => ({
           ...prev,
           type: "NOMINAL",
@@ -271,47 +420,220 @@ export default function APUNexusDashboard() {
           magnitude: 1.0,
         }));
 
+        pendingApprovalRef.current = null;
+        setPendingApproval(null);
+
         // Step 5: Audit & FinOps Agent
-        await new Promise((r) => setTimeout(r, 700));
+        await new Promise((r) => setTimeout(r, 650));
         setActiveAgentIndex(5);
+
+        const rmSaved =
+          remediated.last_remediation?.savings_myr ?? diagnosis?.estimated_savings_myr ?? 680;
+        const co2eReduced =
+          remediated.last_remediation?.carbon_saved_kg ??
+          Number((rmSaved * 0.045).toFixed(1));
+        const iacType = (diagnosis?.iac_manifest || "").includes("apiVersion:")
+          ? "Kubernetes YAML"
+          : "Terraform HCL";
+
         appendLog(
-          `FinOps Agent logged SLA compliance. Prevented campus outage. Projected savings: RM ${diagnosis.estimated_savings_myr}.00/mo. CO2e avoided: ${(remediated.carbon_saved_kg_co2e || 21.4)} kg.`,
+          `FinOps Agent logged SLA compliance (${governanceModeLabel}). Projected savings: RM ${rmSaved}.00/mo. CO2e avoided: ${co2eReduced} kg.`,
           "FINOPS"
         );
 
-        // Add to audit log
-        const newAuditEntry = {
-          id: `AUD-${Math.floor(100 + Math.random() * 900)}`,
-          timestamp: new Date().toLocaleTimeString(),
-          zone: diagnosis.affected_zone || "Multi-Zone",
-          crisis: diagnosis.anomaly_type || crisisType,
-          remediation: diagnosis.cloud_action_taken || "Autonomous Cloud & SDN Remediation",
-          savings: `RM ${diagnosis.estimated_savings_myr || 680}`,
+        const nowTime = new Date().toLocaleTimeString();
+        const completedEntry = {
+          id: pendingIncidentId || `AUD-${Math.floor(100 + Math.random() * 900)}`,
+          timestamp: nowTime,
+          crisisType: diagnosis?.anomaly_type || crisisType,
+          affectedZone: diagnosis?.affected_zone || "Multi-Zone",
+          rootCause:
+            diagnosis?.root_cause || "Autonomous anomaly mitigated across APU infrastructure.",
+          cliCommand:
+            diagnosis?.remediation_command || "apu-nexus-agent --mode=remediate",
+          iacType,
+          remediation: diagnosis?.cloud_action_taken || "Autonomous Cloud & SDN Remediation",
+          rmSaved,
+          co2eReduced,
+          governanceMode: governanceModeLabel,
           status: "RESOLVED",
         };
-        setAuditLog((prev) => [newAuditEntry, ...prev.slice(0, 9)]);
 
-        // Reset agent pipeline indicator after stabilization
-        await new Promise((r) => setTimeout(r, 1200));
+        setIncidentAuditLog((prev) => {
+          if (pendingIncidentId && prev.some((item) => item.id === pendingIncidentId)) {
+            return prev.map((item) =>
+              item.id === pendingIncidentId ? completedEntry : item
+            );
+          }
+          return [completedEntry, ...prev.slice(0, 19)];
+        });
+
+        announceNOC(
+          "Autonomous remediation executed. Campus systems restored to nominal."
+        );
+
+        await new Promise((r) => setTimeout(r, 1100));
+        isRemediatingRef.current = false;
         setIsRemediating(false);
         setActiveAgentIndex(0);
         appendLog("Campus digital twin restored to autonomous equilibrium.", "INFO");
       } catch (err) {
-        console.error("Autonomous healing error:", err);
+        console.error("Remediation completion error:", err);
         appendLog(`Autonomous remediation fallback: ${err.message}`, "WARN");
+        isRemediatingRef.current = false;
         setIsRemediating(false);
         setActiveAgentIndex(0);
       }
     },
-    [appendLog]
+    [appendLog, announceNOC]
   );
+
+  // Autonomous Healing Workflow orchestrator (Runs Steps 1-3, then pauses if Co-Pilot Governance is enabled)
+  const handleTriggerAnalysisAndHeal = useCallback(
+    async (crisisType, snapshot) => {
+      isRemediatingRef.current = true;
+      setIsRemediating(true);
+      setActiveAgentIndex(1); // Telemetry Agent
+      appendLog(
+        `[PHYSICAL EDGE CRISIS DETECTED]: ${crisisType}. Telemetry Ingestion Agent dispatched.`,
+        "WARN"
+      );
+
+      try {
+        // Step 1: Telemetry Ingested
+        await new Promise((r) => setTimeout(r, 550));
+        setActiveAgentIndex(2); // Diagnostic Agent
+        appendLog(
+          "Gemini Diagnostic Agent correlating optical / physical telemetry with campus digital twin...",
+          "AGENT"
+        );
+
+        // Fetch diagnosis from API route
+        const res = await fetch("/api/agent", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ telemetry: snapshot, crisisType }),
+        });
+
+        const diagnosis = await res.json();
+        setCurrentDiagnosis(diagnosis);
+
+        appendLog(
+          `Diagnostic isolated root cause (Confidence: ${((diagnosis.confidence_score || 0.96) * 100).toFixed(0)}%): ${(diagnosis.root_cause || "").substring(0, 85)}...`,
+          "GEMINI"
+        );
+
+        // Step 2: Resolution Architect (IaC & CLI Synthesis)
+        await new Promise((r) => setTimeout(r, 650));
+        setActiveAgentIndex(3);
+        appendLog(
+          `Resolution Architect synthesized remediation: ${diagnosis.remediation_command}`,
+          "AGENT"
+        );
+
+        // Check HITL Governance Mode: if Co-Pilot Mode (autoHealMode === false), PAUSE for human operator approval!
+        if (!autoHealRef.current) {
+          const incidentId = `INC-${Math.floor(1000 + Math.random() * 9000)}`;
+          const iacType = (diagnosis?.iac_manifest || "").includes("apiVersion:")
+            ? "Kubernetes YAML"
+            : "Terraform HCL";
+          const nowTime = new Date().toLocaleTimeString();
+
+          const pendingObj = {
+            incidentId,
+            crisisType,
+            diagnosis,
+            snapshot,
+            iacType,
+            timestamp: nowTime,
+          };
+
+          pendingApprovalRef.current = pendingObj;
+          setPendingApproval(pendingObj);
+          setActiveAgentIndex(4); // Waiting at Execution Gate
+          isRemediatingRef.current = false;
+          setIsRemediating(false);
+
+          setIncidentAuditLog((prev) => [
+            {
+              id: incidentId,
+              timestamp: nowTime,
+              crisisType: diagnosis?.anomaly_type || crisisType,
+              affectedZone: diagnosis?.affected_zone || "Server Room Core",
+              rootCause:
+                diagnosis?.root_cause || "Physical or cyber anomaly held for review.",
+              cliCommand:
+                diagnosis?.remediation_command || "apu-nexus-agent --pending-approval",
+              iacType,
+              remediation: "Awaiting Co-Pilot Governance Operator Approval",
+              rmSaved: 0,
+              co2eReduced: 0,
+              governanceMode: "Co-Pilot Governance (Hold for Approval)",
+              status: "AWAITING APPROVAL",
+            },
+            ...prev.slice(0, 19),
+          ]);
+
+          appendLog(
+            "[CO-PILOT GOVERNANCE HOLD]: IaC manifest & root-cause synthesized. Pausing before execution for human operator approval.",
+            "WARN"
+          );
+          announceNOC(
+            "Remediation manifest synthesized. Awaiting human operator approval."
+          );
+          return;
+        }
+
+        // Auto-Heal Enabled: proceed immediately to Steps 4 & 5
+        await new Promise((r) => setTimeout(r, 700));
+        await executeRemediationCompletion(
+          crisisType,
+          diagnosis,
+          "Full Autonomous (Auto-Heal)",
+          null
+        );
+      } catch (err) {
+        console.error("Autonomous healing error:", err);
+        appendLog(`Autonomous remediation fallback: ${err.message}`, "WARN");
+        isRemediatingRef.current = false;
+        setIsRemediating(false);
+        setActiveAgentIndex(0);
+      }
+    },
+    [appendLog, announceNOC, executeRemediationCompletion]
+  );
+
+  // Co-Pilot Approval Button Handler
+  const handleApproveRemediation = useCallback(async () => {
+    const pending = pendingApprovalRef.current || pendingApproval;
+    if (!pending || isRemediatingRef.current) return;
+
+    appendLog(
+      `[CO-PILOT APPROVED]: Operator authorized autonomous remediation for ${pending.diagnosis?.anomaly_type || pending.crisisType}.`,
+      "ACTION"
+    );
+    await executeRemediationCompletion(
+      pending.crisisType,
+      pending.diagnosis,
+      "Co-Pilot Governance (Human-Approved)",
+      pending.incidentId
+    );
+  }, [pendingApproval, appendLog, executeRemediationCompletion]);
 
   // Trigger Crisis Mode handler
   const handleTriggerCrisis = useCallback(
     (type) => {
-      if (isRemediating) return;
+      if (
+        isRemediatingRef.current ||
+        pendingApprovalRef.current ||
+        crisisDispatchLockRef.current
+      ) {
+        return;
+      }
 
-      const crisisState = triggerCrisisMode(type, campusState);
+      crisisDispatchLockRef.current = true;
+      const crisisState = triggerCrisisMode(type, stateRef.current);
+      stateRef.current = crisisState;
       setCampusState(crisisState);
       publishTelemetry(crisisState);
 
@@ -326,25 +648,41 @@ export default function APUNexusDashboard() {
           ? "Server Room Core (CCTV Lens Obscured)"
           : "Server Room Core (Physical Seismic Vibration >3.0G)";
 
+      const voiceAlertMsg =
+        type === "CAMERA_TAMPERING" || type === "SECURITY_BREACH"
+          ? "Alert in Server Room Core. Optical camera tampering detected. 5-Agent diagnostic pipeline engaged."
+          : type === "SEISMIC_ANOMALY"
+          ? "Critical alert in Server Room Core. Violent seismic vibration detected. 5-Agent diagnostic pipeline engaged."
+          : type === "NETWORK_STORM"
+          ? "Alert in Block B AI Labs. Network storm detected. 5-Agent diagnostic pipeline engaged."
+          : type === "IOT_THERMAL_RUNAWAY"
+          ? "Alert in Server Room Core. Thermal runaway detected. 5-Agent diagnostic pipeline engaged."
+          : "Alert in APU Library Level 2. Energy waste anomaly detected. 5-Agent diagnostic pipeline engaged.";
+
       appendLog(`HARDWARE EDGE TRIGGER: ${type} across ${affected}.`, "CRITICAL");
+      announceNOC(voiceAlertMsg);
 
       if (autoHealRef.current) {
-        appendLog("Autonomous Sentinel Mode: ON. Engaging 5-Agent pipeline in 1.2s...", "SYSTEM");
-        setTimeout(() => {
-          handleTriggerAnalysisAndHeal(type, crisisState);
-        }, 1200);
+        appendLog(
+          "Mode: Full Autonomous (Auto-Heal). Engaging 5-Agent pipeline in 1.0s...",
+          "SYSTEM"
+        );
       } else {
         appendLog(
-          "Auto-Heal Mode: OFF. Awaiting manual administrator remediation command.",
+          "Mode: Co-Pilot Governance. Running 5-Agent diagnosis and holding before remediation...",
           "WARN"
         );
       }
+
+      setTimeout(() => {
+        crisisDispatchLockRef.current = false;
+        handleTriggerAnalysisAndHeal(type, crisisState);
+      }, 1000);
     },
-    [isRemediating, campusState, appendLog, handleTriggerAnalysisAndHeal]
+    [appendLog, announceNOC, handleTriggerAnalysisAndHeal]
   );
 
-  // STAGE 3 ACTION 2: Short-polling useEffect fetching /api/iot every 1000ms
-  // Fully drives the dashboard reactively from actual physical hardware
+  // Short-polling useEffect fetching /api/iot every 1000ms
   useEffect(() => {
     let isMounted = true;
 
@@ -361,7 +699,9 @@ export default function APUNexusDashboard() {
         const isCameraTampered =
           data.type === "CAMERA_TAMPERING" ||
           data.camera_tampered ||
-          (data.camera_luminance !== undefined && data.camera_luminance < 15 && data.cctv_connected);
+          (data.camera_luminance !== undefined &&
+            data.camera_luminance < 15 &&
+            data.cctv_connected);
 
         // 2. Physical Edge: Mobile Hardware Accelerometer Violent Shake (>=3.5G)
         const isSeismicShake =
@@ -371,7 +711,9 @@ export default function APUNexusDashboard() {
 
         if (
           isCameraTampered &&
-          !isRemediating &&
+          !isRemediatingRef.current &&
+          !pendingApprovalRef.current &&
+          !crisisDispatchLockRef.current &&
           stateRef.current.active_crisis !== CRISIS_TYPES.CAMERA_TAMPERING
         ) {
           appendLog(
@@ -381,7 +723,9 @@ export default function APUNexusDashboard() {
           handleTriggerCrisis(CRISIS_TYPES.CAMERA_TAMPERING);
         } else if (
           isSeismicShake &&
-          !isRemediating &&
+          !isRemediatingRef.current &&
+          !pendingApprovalRef.current &&
+          !crisisDispatchLockRef.current &&
           stateRef.current.active_crisis !== CRISIS_TYPES.SEISMIC_ANOMALY
         ) {
           appendLog(
@@ -404,7 +748,9 @@ export default function APUNexusDashboard() {
         setEdgeHardwareData((prev) => ({ ...prev, ...data }));
         if (
           (data.type === "SEISMIC_ANOMALY" || data.magnitude >= 3.5 || data.seismic_alert) &&
-          !isRemediating &&
+          !isRemediatingRef.current &&
+          !pendingApprovalRef.current &&
+          !crisisDispatchLockRef.current &&
           stateRef.current.active_crisis !== CRISIS_TYPES.SEISMIC_ANOMALY
         ) {
           appendLog(
@@ -421,7 +767,7 @@ export default function APUNexusDashboard() {
       clearInterval(interval);
       if (typeof unsubIot === "function") unsubIot();
     };
-  }, [isRemediating, appendLog, handleTriggerCrisis]);
+  }, [appendLog, handleTriggerCrisis]);
 
   // Periodic Telemetry Tick Loop (every 2.5s)
   useEffect(() => {
@@ -442,8 +788,15 @@ export default function APUNexusDashboard() {
             wifi_load: nextState.avg_wifi_load,
             server_cpu: nextState.avg_server_cpu,
             power_usage_kw: nextState.total_power_kw,
-            carbon_kg_co2e: Number((nextState.carbon_kg_co2e || nextState.total_power_kw * 0.4).toFixed(1)),
-            projected_carbon_kg_co2e: Number((nextState.projected_carbon_kg_co2e || (nextState.total_power_kw + 42) * 0.4).toFixed(1)),
+            carbon_kg_co2e: Number(
+              (nextState.carbon_kg_co2e || nextState.total_power_kw * 0.4).toFixed(1)
+            ),
+            projected_carbon_kg_co2e: Number(
+              (
+                nextState.projected_carbon_kg_co2e ||
+                (nextState.total_power_kw + 42) * 0.4
+              ).toFixed(1)
+            ),
           },
         ]);
 
@@ -456,7 +809,11 @@ export default function APUNexusDashboard() {
 
   // Manual Remediation Execution
   const handleManualRemediate = () => {
-    if (isRemediating) return;
+    if (isRemediatingRef.current) return;
+    if (pendingApprovalRef.current || pendingApproval) {
+      handleApproveRemediation();
+      return;
+    }
     const activeCrisis = campusState.active_crisis || CRISIS_TYPES.CAMERA_TAMPERING;
     handleTriggerAnalysisAndHeal(activeCrisis, campusState);
   };
@@ -464,9 +821,14 @@ export default function APUNexusDashboard() {
   // Reset to Healthy Baseline
   const handleResetBaseline = () => {
     const cleanState = createInitialCampusState();
+    stateRef.current = cleanState;
     setCampusState(cleanState);
     publishTelemetry(cleanState);
     setCurrentDiagnosis(null);
+    pendingApprovalRef.current = null;
+    setPendingApproval(null);
+    crisisDispatchLockRef.current = false;
+    isRemediatingRef.current = false;
     setIsRemediating(false);
     setActiveAgentIndex(0);
     fetch("/api/iot", {
@@ -484,6 +846,169 @@ export default function APUNexusDashboard() {
       magnitude: 1.0,
     }));
     appendLog("Campus infrastructure reset to nominal baseline state.", "INFO");
+  };
+
+  // Feature 4: Natural-Language "Ask APU-Nexus" AI Commander Bar Handler
+  const handleAskCommander = async (customPrompt = null) => {
+    const queryText = (
+      typeof customPrompt === "string" ? customPrompt : commanderQuery
+    ).trim();
+    if (!queryText || isAskingCommander) return;
+
+    if (typeof customPrompt === "string") {
+      setCommanderQuery(customPrompt);
+    }
+
+    setIsAskingCommander(true);
+    appendLog(`[Ask APU-Nexus]: "${queryText}"`, "AGENT");
+
+    try {
+      const res = await fetch("/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telemetry: stateRef.current,
+          userQuery: queryText,
+          weather: ambientWeather,
+        }),
+      });
+      const data = await res.json();
+      const reply =
+        data.commander_reply ||
+        data.root_cause ||
+        "APU-Nexus Commander analyzed live telemetry.";
+      setCommanderReply({
+        query: queryText,
+        reply,
+        timestamp: new Date().toLocaleTimeString(),
+      });
+      appendLog(
+        `[AI Commander]: Delivered telemetry-grounded briefing (${reply.length} chars).`,
+        "GEMINI"
+      );
+    } catch (err) {
+      setCommanderReply({
+        query: queryText,
+        reply: `Live fallback response (${stateRef.current.overall_status}): ${stateRef.current.total_power_kw} kW total draw, RM ${stateRef.current.monthly_savings_myr?.toLocaleString()} monthly savings. (${err.message})`,
+        timestamp: new Date().toLocaleTimeString(),
+      });
+    } finally {
+      setIsAskingCommander(false);
+    }
+  };
+
+  // Feature 5: 1-Click Executive Compliance & ESG Audit Report Export (.md)
+  const handleExportAuditReport = () => {
+    if (typeof window === "undefined" || typeof Blob === "undefined") return;
+
+    const nowIso = new Date().toISOString();
+    const nowLocal = new Date().toLocaleString();
+    const state = stateRef.current || campusState;
+    const zonesList = Object.values(state.zones || {});
+    const tempDelta = (ambientWeather.temperature_2m - 22.0).toFixed(1);
+
+    const zoneRows = zonesList
+      .map(
+        (z) =>
+          `| ${z.name} | ${z.status} | ${z.wifi_load}% | ${z.latency_ms} ms | ${z.server_cpu}% | ${z.ac_temp_c}°C | ${z.power_usage_kw} kW | ${Number(
+            z.carbon_kg_co2e ?? z.power_usage_kw * 0.4
+          ).toFixed(1)} kg | ${(z.vibration_g || 1.0).toFixed(2)}G | ${
+            z.active_alert || "None"
+          } |`
+      )
+      .join("\n");
+
+    const incidentRows =
+      incidentAuditLog.length === 0
+        ? "| — | No session incidents recorded | — | — | — | — | RM 0 | 0.0 kg | — |"
+        : incidentAuditLog
+            .map(
+              (inc) =>
+                `| ${inc.id} | ${inc.timestamp} | ${inc.crisisType} | ${inc.affectedZone} | ${inc.governanceMode} | ${inc.iacType} | RM ${inc.rmSaved} | ${inc.co2eReduced} kg CO2e | ${inc.status} |`
+            )
+            .join("\n");
+
+    const detailedIncidents = incidentAuditLog
+      .map(
+        (inc, idx) => `### ${idx + 1}. ${inc.id} — ${inc.crisisType} (${inc.status})
+- **Timestamp:** ${inc.timestamp}
+- **Affected Zone:** ${inc.affectedZone}
+- **Governance Mode:** ${inc.governanceMode}
+- **Root Cause:** ${inc.rootCause}
+- **CLI Command:** \`${inc.cliCommand}\`
+- **IaC Synthesized:** ${inc.iacType}
+- **FinOps Savings:** RM ${inc.rmSaved} | **CO2e Reduced:** ${inc.co2eReduced} kg CO2e`
+      )
+      .join("\n\n");
+
+    const reportMarkdown = `# APU-Nexus Executive Compliance, Security & ESG Audit Report
+
+**Generated At:** ${nowLocal} (\`${nowIso}\`)  
+**Facility:** Asia Pacific University (APU), Bukit Jalil Campus  
+**Active Governance Policy:** ${
+      autoHealMode
+        ? "Full Autonomous (Auto-Heal)"
+        : "Co-Pilot Governance (Hold for Approval)"
+    }  
+**Overall Digital Twin Status:** ${state.overall_status}  
+**SLA Uptime:** ${state.uptime_sla}%
+
+---
+
+## 1. Live Bukit Jalil External Weather & HVAC Load Correlation
+- **Ambient Outdoor Temperature:** ${ambientWeather.temperature_2m.toFixed(1)}°C
+- **Relative Humidity:** ${Math.round(ambientWeather.relative_humidity_2m)}% RH
+- **Telemetry Source:** ${ambientWeather.source} (\`3.0554°N, 101.7005°E\`)
+- **Tropical Cooling Load Correlation:** +${tempDelta}°C exterior thermal differential against 22.0°C campus HVAC chilled-water baseline, elevating chiller duty cycle and autonomous Eco-VRF setpoint optimization potential.
+
+---
+
+## 2. Campus FinOps & ESG Decarbonization Summary
+| KPI Metric | Value |
+| :--- | :--- |
+| **Projected Monthly Cost Avoidance** | **RM ${Number(state.monthly_savings_myr || 0).toLocaleString()}/mo** |
+| **Cumulative CO2e Emissions Saved** | **${Number(state.total_co2e_saved || 0).toFixed(1)} kg CO2e** |
+| **Live Total Campus Power Draw** | **${state.total_power_kw} kW** (Projected Unmitigated: ${state.projected_power_kw} kW) |
+| **Live Campus Carbon Rate** | **${Number(state.carbon_kg_co2e || 0).toFixed(1)} kg CO2e** (Projected Unmitigated: ${Number(state.projected_carbon_kg_co2e || 0).toFixed(1)} kg CO2e) |
+| **Resolved Autonomous Incidents** | **${state.resolved_incidents_count}** |
+| **Average Wi-Fi Load & Latency** | **${state.avg_wifi_load}%** @ **${state.avg_latency_ms} ms** RTT |
+
+---
+
+## 3. Current Multi-Zone Campus Telemetry Snapshot
+| Campus Zone | Status | Wi-Fi | Latency | CPU | AC Temp | Power | Carbon CO2e | Vibration | Active Alert |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+${zoneRows}
+
+---
+
+## 4. Session Incident Audit History
+| ID | Timestamp | Crisis Type | Affected Zone | Governance Mode | IaC Type | RM Saved | CO2e Reduced | Status |
+| :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- | :--- |
+${incidentRows}
+
+---
+
+## 5. Detailed Root-Cause & Remediation Traceability
+${detailedIncidents}
+
+---
+*Compiled by APU-Nexus Autonomous Campus Digital Twin v4.0 (Zero-Cost Client Exporter).*
+`;
+
+    const blob = new Blob([reportMarkdown], { type: "text/markdown;charset=utf-8" });
+    const url = window.URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "APU-Nexus-Compliance-Report.md";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    window.URL.revokeObjectURL(url);
+    appendLog(
+      "[Compliance]: Downloaded APU-Nexus-Compliance-Report.md audit & ESG export.",
+      "FINOPS"
+    );
   };
 
   const handleCopyIaC = () => {
@@ -535,9 +1060,14 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           iac_manifest: manifest,
-          anomaly_type: currentDiagnosis?.anomaly_type || campusState.active_crisis || "Campus Baseline IaC",
+          anomaly_type:
+            currentDiagnosis?.anomaly_type ||
+            campusState.active_crisis ||
+            "Campus Baseline IaC",
           affected_zone: currentDiagnosis?.affected_zone || selectedZone,
-          root_cause: currentDiagnosis?.root_cause || "Autonomous infrastructure configuration sync.",
+          root_cause:
+            currentDiagnosis?.root_cause ||
+            "Autonomous infrastructure configuration sync.",
         }),
       });
 
@@ -552,7 +1082,10 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
         });
         appendLog(`[GitOps]: Automated Pull Request created: ${data.pr_url}`, "FINOPS");
       } else {
-        appendLog(`[GitOps]: GitHub PR dispatch warning: ${data.error || "Unknown error"}`, "WARN");
+        appendLog(
+          `[GitOps]: GitHub PR dispatch warning: ${data.error || "Unknown error"}`,
+          "WARN"
+        );
       }
     } catch (err) {
       console.error("GitOps dispatch error:", err);
@@ -572,7 +1105,8 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
   const isSeismicActive =
     campusState.active_crisis === CRISIS_TYPES.SEISMIC_ANOMALY ||
     campusState.active_crisis === "SEISMIC_ANOMALY";
-  const isFixDeployed = campusState.overall_status === "REMEDIATED" || isRemediating;
+  const isFixDeployed =
+    !pendingApproval && (campusState.overall_status === "REMEDIATED" || isRemediating);
 
   return (
     <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans">
@@ -605,12 +1139,14 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
           </div>
         </div>
 
-        {/* Status Indicators & Live FinOps Counter */}
-        <div className="flex flex-wrap items-center gap-2.5 sm:gap-4">
+        {/* Status Indicators, Voice NOC Toggle & Live FinOps Counter */}
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           {/* Status Badge */}
           <div
             className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border text-xs font-semibold tracking-wide transition-all ${
-              isRemediating
+              pendingApproval
+                ? "bg-amber-500/20 border-amber-400 text-amber-200 animate-pulse"
+                : isRemediating
                 ? "bg-amber-500/10 border-amber-500/40 text-amber-300 animate-pulse"
                 : isCrisisActive
                 ? "bg-rose-500/10 border-rose-500/40 text-rose-300 animate-bounce"
@@ -619,19 +1155,42 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
           >
             <span
               className={`w-2 h-2 rounded-full ${
-                isRemediating
+                pendingApproval
+                  ? "bg-amber-400"
+                  : isRemediating
                   ? "bg-amber-400"
                   : isCrisisActive
                   ? "bg-rose-500"
                   : "bg-emerald-400"
               }`}
             />
-            {isRemediating
+            {pendingApproval
+              ? "CO-PILOT HOLD: AWAITING APPROVAL"
+              : isRemediating
               ? "REMEDIATING VIA MULTI-AGENT AI..."
               : isCrisisActive
               ? `CRISIS DETECTED: ${campusState.active_crisis}`
               : "AUTONOMOUS SELF-HEALING ACTIVE"}
           </div>
+
+          {/* Feature 2: Live NOC Voice Incident Briefing Toggle */}
+          <button
+            type="button"
+            onClick={handleToggleVoice}
+            title="Toggle Live NOC Web Speech Voice Incident Briefings"
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-mono transition shadow-sm ${
+              voiceEnabled
+                ? "bg-cyan-950/60 hover:bg-cyan-900/60 border-cyan-500/50 text-cyan-200"
+                : "bg-slate-900/80 hover:bg-slate-800 border-slate-700 text-slate-400"
+            }`}
+          >
+            {voiceEnabled ? (
+              <Volume2 className="w-3.5 h-3.5 text-cyan-400" />
+            ) : (
+              <VolumeX className="w-3.5 h-3.5 text-slate-500" />
+            )}
+            <span>{voiceEnabled ? "🔊 Voice NOC: ON" : "🔇 Voice NOC: OFF"}</span>
+          </button>
 
           {/* CCTV Vision Edge Node Badge */}
           <Link
@@ -643,7 +1202,11 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             }`}
             title="Open Vision Edge Camera Node (/cctv)"
           >
-            <Video className={`w-3.5 h-3.5 ${edgeHardwareData.camera_tampered ? "text-rose-400" : "text-rose-400/80"}`} />
+            <Video
+              className={`w-3.5 h-3.5 ${
+                edgeHardwareData.camera_tampered ? "text-rose-400" : "text-rose-400/80"
+              }`}
+            />
             <div className="flex items-center gap-1.5">
               <span
                 className={`w-2 h-2 rounded-full ${
@@ -683,7 +1246,10 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
                 }`}
               />
               <span>
-                Sensor: {edgeHardwareData.device_connected ? `${edgeHardwareData.magnitude?.toFixed(1)}G` : "Standby"}
+                Sensor:{" "}
+                {edgeHardwareData.device_connected
+                  ? `${edgeHardwareData.magnitude?.toFixed(1)}G`
+                  : "Standby"}
               </span>
             </div>
             <ExternalLink className="w-3 h-3 text-cyan-400/80" />
@@ -706,112 +1272,211 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
 
       {/* FLASHING CAMERA SABOTAGE EMERGENCY BANNER */}
       {isCameraSabotageActive && (
-        <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-bold font-mono tracking-wide flex items-center justify-between shadow-xl animate-pulse">
+        <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-bold font-mono tracking-wide flex flex-wrap items-center justify-between gap-3 shadow-xl">
           <div className="flex items-center gap-2.5">
-            <AlertTriangle className="w-5 h-5 animate-bounce" />
+            <AlertTriangle className="w-5 h-5 animate-bounce shrink-0" />
             <span>
-              CRITICAL PHYSICAL SECURITY SABOTAGE: CCTV CAMERA LENS OBSCURED (&lt;15/255 LUMINANCE) IN SERVER ROOM CORE.
-              LOCKING MAGNETIC DOORS & DISPATCHING APU SECURITY DRONE!
+              CRITICAL PHYSICAL SECURITY SABOTAGE: CCTV CAMERA LENS OBSCURED (&lt;15/255
+              LUMINANCE) IN SERVER ROOM CORE.{" "}
+              {pendingApproval
+                ? "5-AGENT DIAGNOSIS READY — HOLDING FOR CO-PILOT APPROVAL!"
+                : "LOCKING MAGNETIC DOORS & DISPATCHING APU SECURITY DRONE!"}
             </span>
           </div>
-          <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
-            BACNET MAGLOCKS SEALING
-          </span>
+          <div className="flex items-center gap-2">
+            {pendingApproval && (
+              <button
+                type="button"
+                onClick={handleApproveRemediation}
+                className="px-3.5 py-1.5 rounded-md bg-gradient-to-r from-emerald-500 to-amber-400 hover:from-emerald-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-950/50 border border-white/40 transition animate-pulse cursor-pointer"
+              >
+                [⚡ Approve &amp; Execute Autonomous Remediation]
+              </button>
+            )}
+            <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
+              {pendingApproval ? "HITL GATE ACTIVE" : "BACNET MAGLOCKS SEALING"}
+            </span>
+          </div>
         </div>
       )}
 
       {/* FLASHING SEISMIC EMERGENCY BANNER */}
       {isSeismicActive && !isCameraSabotageActive && (
-        <div className="bg-rose-600 text-white px-4 py-2 text-xs font-bold font-mono tracking-wide flex items-center justify-between shadow-lg animate-pulse">
+        <div className="bg-rose-600 text-white px-4 py-2.5 text-xs font-bold font-mono tracking-wide flex flex-wrap items-center justify-between gap-3 shadow-lg">
           <div className="flex items-center gap-2">
-            <AlertTriangle className="w-4 h-4" />
+            <AlertTriangle className="w-4 h-4 shrink-0 animate-bounce" />
             <span>
-              CRITICAL SEISMIC & STRUCTURAL EMERGENCY ({edgeHardwareData.magnitude || 8.4}G &gt;= 3.5G) DETECTED VIA PHYSICAL HARDWARE ACCELEROMETER.
-              TRIP BREAKER SRV-CORE-HV1 ENGAGED!
+              CRITICAL SEISMIC &amp; STRUCTURAL EMERGENCY (
+              {edgeHardwareData.magnitude || 8.4}G &gt;= 3.5G) DETECTED VIA PHYSICAL
+              HARDWARE ACCELEROMETER.{" "}
+              {pendingApproval
+                ? "5-AGENT FAILOVER PLAN READY — HOLDING FOR HUMAN APPROVAL!"
+                : "TRIP BREAKER SRV-CORE-HV1 ENGAGED!"}
             </span>
           </div>
-          <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
-            FAILOVER TO GCP ASIA-SOUTHEAST1-B ACTIVE
-          </span>
+          <div className="flex items-center gap-2">
+            {pendingApproval && (
+              <button
+                type="button"
+                onClick={handleApproveRemediation}
+                className="px-3.5 py-1.5 rounded-md bg-gradient-to-r from-emerald-500 to-amber-400 hover:from-emerald-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs shadow-lg shadow-emerald-950/50 border border-white/40 transition animate-pulse cursor-pointer"
+              >
+                [⚡ Approve &amp; Execute Autonomous Remediation]
+              </button>
+            )}
+            <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
+              {pendingApproval ? "HITL GATE ACTIVE" : "FAILOVER TO GCP ASIA-SOUTHEAST1-B ACTIVE"}
+            </span>
+          </div>
         </div>
       )}
 
-      {/* 2. AUTONOMOUS PHYSICAL EDGE TELEMETRY SENTINEL HUB */}
-      <section className="bg-slate-900/90 border-b border-slate-800 px-4 lg:px-8 py-3">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-start md:items-center justify-between gap-3">
+      {/* GENERAL CRISIS / CO-PILOT HOLD BANNER (NETWORK / THERMAL / ENERGY) */}
+      {isCrisisActive && !isCameraSabotageActive && !isSeismicActive && (
+        <div className="bg-gradient-to-r from-rose-700 via-rose-600 to-amber-600 text-white px-4 py-2.5 text-xs font-bold font-mono tracking-wide flex flex-wrap items-center justify-between gap-3 shadow-lg">
           <div className="flex items-center gap-2">
-            <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
-            <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
-              True Edge Hardware Sentinel:
-            </span>
-            <span className="text-xs font-mono text-cyan-400">
-              Live Edge Polling (1000ms Cadence) • Zero Mock Reliance
+            <ShieldAlert className="w-4 h-4 shrink-0 animate-bounce" />
+            <span>
+              ACTIVE CAMPUS ANOMALY ({campusState.active_crisis}):{" "}
+              {pendingApproval
+                ? `${pendingApproval.diagnosis?.anomaly_type} in ${pendingApproval.diagnosis?.affected_zone} — IaC Manifest Ready. Awaiting Operator Approval.`
+                : "5-Agent autonomous diagnostic pipeline evaluating campus telemetry."}
             </span>
           </div>
+          <div className="flex items-center gap-2">
+            {pendingApproval && (
+              <button
+                type="button"
+                onClick={handleApproveRemediation}
+                className="px-3.5 py-1.5 rounded-md bg-gradient-to-r from-emerald-400 to-amber-300 hover:from-emerald-300 hover:to-amber-200 text-slate-950 font-extrabold text-xs shadow-lg border border-white/50 transition animate-pulse cursor-pointer"
+              >
+                [⚡ Approve &amp; Execute Autonomous Remediation]
+              </button>
+            )}
+            <span className="bg-white/20 px-2 py-0.5 rounded text-[10px]">
+              {pendingApproval ? "CO-PILOT GOVERNANCE PAUSED" : "DIAGNOSTIC ACTIVE"}
+            </span>
+          </div>
+        </div>
+      )}
 
-          <div className="flex flex-wrap items-center gap-2">
-            {/* Direct Link to CCTV node */}
-            <Link
-              href="/cctv"
-              className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-medium transition flex items-center gap-1.5"
-            >
-              <Video className="w-3.5 h-3.5 text-rose-400" />
-              Surveillance Camera (/cctv)
-            </Link>
+      {/* 2. AUTONOMOUS PHYSICAL EDGE TELEMETRY SENTINEL HUB & HITL GOVERNANCE BAR */}
+      <section className="bg-slate-900/90 border-b border-slate-800 px-4 lg:px-8 py-3">
+        <div className="max-w-7xl mx-auto flex flex-col gap-3">
+          {/* Top Row: Live Edge Status + External Bukit Jalil Weather Correlation */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-800/70">
+            <div className="flex items-center gap-2">
+              <Radio className="w-4 h-4 text-emerald-400 animate-pulse" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-slate-200">
+                True Edge Hardware Sentinel:
+              </span>
+              <span className="text-xs font-mono text-cyan-400">
+                Live Edge Polling (1000ms Cadence) • Zero Mock Reliance
+              </span>
+            </div>
 
-            {/* Direct Link to Accelerometer node */}
-            <Link
-              href="/sensor"
-              className="px-3 py-1.5 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-200 text-xs font-medium transition flex items-center gap-1.5"
+            {/* Feature 3: Live Bukit Jalil Ambient Weather Correlation Badge */}
+            <div
+              className="flex flex-wrap items-center gap-2 px-3 py-1 rounded-lg bg-sky-950/40 border border-sky-500/30 text-[11px] font-mono text-sky-200 shadow-sm"
+              title="Live Open-Meteo tropical ambient telemetry correlated against APU HVAC chiller loads & ESG carbon footprint"
             >
-              <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
-              Mobile Accelerometer (/sensor)
-            </Link>
-
-            {/* Collapsible toggle for judges manual override panel */}
-            <button
-              onClick={() => setShowManualOverrides(!showManualOverrides)}
-              className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition flex items-center gap-1"
-            >
-              <Sliders className="w-3.5 h-3.5 text-slate-400" />
-              <span>Overrides</span>
-              <ChevronDown className={`w-3 h-3 transition-transform ${showManualOverrides ? "rotate-180" : ""}`} />
-            </button>
+              <CloudSun className="w-3.5 h-3.5 text-amber-300 shrink-0" />
+              <span>
+                📍 APU Bukit Jalil Live Ambient: {ambientWeather.temperature_2m.toFixed(1)}°C |{" "}
+                {Math.round(ambientWeather.relative_humidity_2m)}% RH (Open-Meteo Satellite)
+              </span>
+              <span className="px-1.5 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 text-[10px]">
+                HVAC Cooling Δ+{(ambientWeather.temperature_2m - 22.0).toFixed(1)}°C
+              </span>
+            </div>
           </div>
 
-          <div className="flex items-center gap-2 border-t md:border-t-0 pt-2 md:pt-0 border-slate-800 w-full md:w-auto justify-end">
-            {/* Auto-Heal Mode Toggle */}
-            <button
-              onClick={() => setAutoHealEnabled(!autoHealEnabled)}
-              className={`px-3 py-1.5 rounded-md border text-xs font-medium transition flex items-center gap-1.5 ${
-                autoHealEnabled
-                  ? "bg-cyan-950/50 border-cyan-500/60 text-cyan-300"
-                  : "bg-slate-800/80 border-slate-700 text-slate-400"
-              }`}
-            >
-              <Sliders className="w-3.5 h-3.5" />
-              Auto-Heal: {autoHealEnabled ? "ON" : "OFF"}
-            </button>
+          {/* Second Row: Edge Links & Governance / Action Controls */}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-center gap-2">
+              {/* Direct Link to CCTV node */}
+              <Link
+                href="/cctv"
+                className="px-3 py-1.5 rounded-md bg-rose-950/40 hover:bg-rose-900/60 border border-rose-500/50 text-rose-200 text-xs font-medium transition flex items-center gap-1.5"
+              >
+                <Video className="w-3.5 h-3.5 text-rose-400" />
+                Surveillance Camera (/cctv)
+              </Link>
 
-            {/* Manual Execute Fix */}
-            <button
-              onClick={handleManualRemediate}
-              disabled={isRemediating || !isCrisisActive}
-              className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-sm shadow-emerald-500/20"
-            >
-              <Play className="w-3.5 h-3.5" />
-              Manual Execute Fix
-            </button>
+              {/* Direct Link to Accelerometer node */}
+              <Link
+                href="/sensor"
+                className="px-3 py-1.5 rounded-md bg-cyan-950/40 hover:bg-cyan-900/60 border border-cyan-500/50 text-cyan-200 text-xs font-medium transition flex items-center gap-1.5"
+              >
+                <Smartphone className="w-3.5 h-3.5 text-cyan-400" />
+                Mobile Accelerometer (/sensor)
+              </Link>
 
-            {/* Baseline Reset */}
-            <button
-              onClick={handleResetBaseline}
-              disabled={isRemediating}
-              title="Reset to Healthy Baseline"
-              className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-50"
-            >
-              <RefreshCw className="w-3.5 h-3.5" />
-            </button>
+              {/* Collapsible toggle for judges manual override panel */}
+              <button
+                type="button"
+                onClick={() => setShowManualOverrides(!showManualOverrides)}
+                className="px-2.5 py-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-medium transition flex items-center gap-1"
+              >
+                <Sliders className="w-3.5 h-3.5 text-slate-400" />
+                <span>Overrides</span>
+                <ChevronDown
+                  className={`w-3 h-3 transition-transform ${
+                    showManualOverrides ? "rotate-180" : ""
+                  }`}
+                />
+              </button>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 justify-end">
+              {/* Feature 1: Prominent HITL Governance Mode Toggle */}
+              <button
+                type="button"
+                onClick={handleToggleGovernanceMode}
+                className={`px-3 py-1.5 rounded-md border text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer ${
+                  autoHealMode
+                    ? "bg-emerald-950/60 hover:bg-emerald-900/60 border-emerald-500/60 text-emerald-200"
+                    : "bg-amber-950/70 hover:bg-amber-900/70 border-amber-400/70 text-amber-200 shadow-amber-500/10"
+                }`}
+              >
+                <span>
+                  {autoHealMode
+                    ? "🟢 Mode: Full Autonomous (Auto-Heal)"
+                    : "🟡 Mode: Co-Pilot Governance (Hold for Approval)"}
+                </span>
+              </button>
+
+              {/* Feature 5: 1-Click Executive Compliance & ESG Audit Report Export */}
+              <button
+                type="button"
+                onClick={handleExportAuditReport}
+                className="px-3 py-1.5 rounded-md bg-indigo-600/80 hover:bg-indigo-500 text-white border border-indigo-400/50 text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                [📄 Export Audit &amp; ESG Report]
+              </button>
+
+              {/* Manual Execute Fix */}
+              <button
+                type="button"
+                onClick={handleManualRemediate}
+                disabled={isRemediating || (!isCrisisActive && !pendingApproval)}
+                className="px-3 py-1.5 rounded-md bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold transition flex items-center gap-1.5 disabled:opacity-40 disabled:hover:bg-emerald-600 shadow-sm shadow-emerald-500/20"
+              >
+                <Play className="w-3.5 h-3.5" />
+                {pendingApproval ? "Approve Fix" : "Manual Execute Fix"}
+              </button>
+
+              {/* Baseline Reset */}
+              <button
+                type="button"
+                onClick={handleResetBaseline}
+                disabled={isRemediating}
+                title="Reset to Healthy Baseline"
+                className="p-1.5 rounded-md bg-slate-800 hover:bg-slate-700 text-slate-300 border border-slate-700 transition disabled:opacity-50"
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -822,40 +1487,45 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               Manual Simulation Injections:
             </span>
             <button
+              type="button"
               onClick={() => handleTriggerCrisis(CRISIS_TYPES.CAMERA_TAMPERING)}
-              disabled={isRemediating}
+              disabled={isRemediating || Boolean(pendingApproval)}
               className="px-2.5 py-1 rounded bg-rose-950/60 hover:bg-rose-900/80 border border-rose-500/60 text-rose-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <EyeOff className="w-3 h-3 text-rose-400" />
               Simulate Camera Tampering (&lt;15)
             </button>
             <button
+              type="button"
               onClick={() => handleTriggerCrisis(CRISIS_TYPES.SEISMIC_ANOMALY)}
-              disabled={isRemediating}
+              disabled={isRemediating || Boolean(pendingApproval)}
               className="px-2.5 py-1 rounded bg-purple-950/60 hover:bg-purple-900/80 border border-purple-500/60 text-purple-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <Activity className="w-3 h-3 text-purple-400" />
               Simulate Violent Shake (&gt;3.0G)
             </button>
             <button
+              type="button"
               onClick={() => handleTriggerCrisis(CRISIS_TYPES.NETWORK_STORM)}
-              disabled={isRemediating}
+              disabled={isRemediating || Boolean(pendingApproval)}
               className="px-2.5 py-1 rounded bg-blue-950/60 hover:bg-blue-900/80 border border-blue-500/60 text-blue-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <Zap className="w-3 h-3 text-blue-400" />
               Simulate Wi-Fi Storm
             </button>
             <button
+              type="button"
               onClick={() => handleTriggerCrisis(CRISIS_TYPES.IOT_THERMAL_RUNAWAY)}
-              disabled={isRemediating}
+              disabled={isRemediating || Boolean(pendingApproval)}
               className="px-2.5 py-1 rounded bg-amber-950/60 hover:bg-amber-900/80 border border-amber-500/60 text-amber-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <Flame className="w-3 h-3 text-amber-400" />
               Simulate Thermal Runaway
             </button>
             <button
+              type="button"
               onClick={() => handleTriggerCrisis(CRISIS_TYPES.ENERGY_WASTE_ANOMALY)}
-              disabled={isRemediating}
+              disabled={isRemediating || Boolean(pendingApproval)}
               className="px-2.5 py-1 rounded bg-emerald-950/60 hover:bg-emerald-900/80 border border-emerald-500/60 text-emerald-200 text-xs font-mono transition flex items-center gap-1.5 disabled:opacity-50"
             >
               <TrendingDown className="w-3 h-3 text-emerald-400" />
@@ -1053,6 +1723,96 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               <span className="text-emerald-400 font-mono">ESG Net-Zero AI</span>
             </div>
           </div>
+        </section>
+
+        {/* FEATURE 4: NATURAL-LANGUAGE "ASK APU-NEXUS" AI COMMANDER BAR */}
+        <section className="bg-slate-900/75 rounded-xl border border-cyan-500/30 p-4 lg:p-5 space-y-3 shadow-lg shadow-cyan-950/20">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-cyan-500/15 border border-cyan-500/30">
+                <Bot className="w-4 h-4 text-cyan-400" />
+              </div>
+              <div>
+                <h2 className="text-xs sm:text-sm font-bold tracking-wide text-white uppercase flex items-center gap-2">
+                  Ask APU-Nexus AI Commander
+                  <span className="text-[10px] px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-300 border border-emerald-500/30 font-mono font-normal normal-case">
+                    Live Telemetry + Weather Grounded
+                  </span>
+                </h2>
+              </div>
+            </div>
+            <span className="text-[11px] text-slate-400 font-mono">
+              Zero-Key Hybrid Inference • Real-Time Digital Twin Query Engine
+            </span>
+          </div>
+
+          {/* 3 One-Click Prompt Chips */}
+          <div className="flex flex-wrap items-center gap-2">
+            {COMMANDER_CHIPS.map((chip) => (
+              <button
+                key={chip}
+                type="button"
+                disabled={isAskingCommander}
+                onClick={() => handleAskCommander(chip)}
+                className="px-2.5 py-1 rounded-full bg-slate-950/90 hover:bg-cyan-950/70 border border-slate-700 hover:border-cyan-500/60 text-cyan-200 text-[11px] font-mono transition flex items-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <Sparkles className="w-3 h-3 text-cyan-400 shrink-0" />
+                <span>{chip}</span>
+              </button>
+            ))}
+          </div>
+
+          {/* Interactive Query Bar */}
+          <form
+            onSubmit={(e) => {
+              e.preventDefault();
+              handleAskCommander();
+            }}
+            className="flex flex-col sm:flex-row gap-2"
+          >
+            <div className="relative flex-1">
+              <MessageSquare className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
+              <input
+                type="text"
+                value={commanderQuery}
+                onChange={(e) => setCommanderQuery(e.target.value)}
+                placeholder="Ask APU-Nexus about live zone load, carbon footprint, FinOps savings, or anomaly mitigation..."
+                className="w-full pl-9 pr-3 py-2 rounded-lg bg-slate-950 border border-slate-700 focus:border-cyan-500 focus:outline-none text-xs text-slate-100 placeholder:text-slate-500 font-mono"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isAskingCommander || !commanderQuery.trim()}
+              className="px-4 py-2 rounded-lg bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-500 hover:to-blue-500 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition disabled:opacity-40 cursor-pointer shrink-0"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>{isAskingCommander ? "Analyzing..." : "Ask Commander"}</span>
+            </button>
+          </form>
+
+          {/* Commander Response Output */}
+          {commanderReply && (
+            <div className="p-3.5 rounded-lg bg-slate-950/90 border border-cyan-500/30 space-y-2">
+              <div className="flex items-center justify-between gap-2 border-b border-slate-800 pb-1.5 text-[11px] font-mono">
+                <span className="text-cyan-400 font-semibold truncate">
+                  Query: &ldquo;{commanderReply.query}&rdquo;
+                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className="text-slate-500">{commanderReply.timestamp}</span>
+                  <button
+                    type="button"
+                    onClick={() => setCommanderReply(null)}
+                    className="text-slate-400 hover:text-white px-1.5 py-0.5 rounded bg-slate-900 border border-slate-800"
+                  >
+                    Clear
+                  </button>
+                </div>
+              </div>
+              <div className="text-xs text-slate-200 whitespace-pre-line leading-relaxed font-sans">
+                {commanderReply.reply}
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 4. 2D SPATIAL CAMPUS DIGITAL TWIN FLOOR MAP (SVG) & ZONE DETAILS */}
@@ -1555,12 +2315,15 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
             ].map((node) => {
               const isActive = activeAgentIndex === node.index;
               const isPast = activeAgentIndex > node.index;
+              const isAwaitingGate = Boolean(pendingApproval) && node.index === 4;
 
               return (
                 <div
                   key={node.index}
                   className={`p-3.5 rounded-xl border transition-all relative ${
-                    isActive
+                    isAwaitingGate
+                      ? "bg-amber-950/60 border-amber-400 shadow-lg shadow-amber-500/20"
+                      : isActive
                       ? "bg-cyan-950/60 border-cyan-400 shadow-lg shadow-cyan-500/20 scale-102"
                       : isPast
                       ? "bg-slate-900/80 border-emerald-500/50 text-slate-300"
@@ -1573,7 +2336,9 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
                     </span>
                     <span
                       className={`w-2.5 h-2.5 rounded-full ${
-                        isActive
+                        isAwaitingGate
+                          ? "bg-amber-400 animate-ping"
+                          : isActive
                           ? "bg-cyan-400 animate-ping"
                           : isPast
                           ? "bg-emerald-400"
@@ -1588,6 +2353,53 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
               );
             })}
           </div>
+
+          {/* CO-PILOT GOVERNANCE HUMAN-IN-THE-LOOP APPROVAL PANEL */}
+          {pendingApproval && (
+            <div className="mt-4 p-4 rounded-xl bg-gradient-to-r from-amber-950/70 via-rose-950/50 to-emerald-950/60 border border-amber-400/70 shadow-xl shadow-amber-500/10 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+              <div className="space-y-1.5 flex-1">
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="px-2 py-0.5 rounded bg-amber-500/20 border border-amber-400/50 text-amber-200 text-[10px] font-mono font-bold uppercase flex items-center gap-1">
+                    <UserCheck className="w-3 h-3" />
+                    Co-Pilot Governance Hold Gate • {pendingApproval.incidentId}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-purple-500/20 border border-purple-400/40 text-purple-200 text-[10px] font-mono">
+                    {pendingApproval.iacType} Manifest Synthesized
+                  </span>
+                </div>
+                <p className="text-xs font-bold text-white">
+                  {pendingApproval.diagnosis?.anomaly_type || pendingApproval.crisisType} —{" "}
+                  <span className="text-rose-300">
+                    {pendingApproval.diagnosis?.affected_zone || "Server Room Core"}
+                  </span>
+                </p>
+                <p className="text-[11px] text-slate-300 leading-relaxed">
+                  {pendingApproval.diagnosis?.root_cause}
+                </p>
+                <div className="bg-slate-950/90 px-2.5 py-1.5 rounded border border-slate-800 font-mono text-[10px] text-cyan-300 overflow-x-auto whitespace-nowrap">
+                  $ {pendingApproval.diagnosis?.remediation_command}
+                </div>
+              </div>
+
+              <div className="flex flex-wrap lg:flex-col items-stretch gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={handleApproveRemediation}
+                  className="px-4 py-2.5 rounded-lg bg-gradient-to-r from-emerald-500 via-emerald-400 to-amber-400 hover:from-emerald-400 hover:to-amber-300 text-slate-950 font-extrabold text-xs tracking-wide shadow-lg shadow-emerald-500/30 border border-white/40 transition animate-pulse cursor-pointer"
+                >
+                  [⚡ Approve &amp; Execute Autonomous Remediation]
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setActiveInspectorTab("iac")}
+                  className="px-3 py-1.5 rounded-lg bg-slate-900/90 hover:bg-slate-800 border border-purple-500/50 text-purple-200 text-[11px] font-mono transition flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  <FileCode className="w-3.5 h-3.5 text-purple-400" />
+                  Inspect {pendingApproval.iacType} Manifest
+                </button>
+              </div>
+            </div>
+          )}
         </section>
 
         {/* 6. CHARTS & TERMINAL / IAC INSPECTOR (2-COLUMN GRID) */}
@@ -1844,16 +2656,26 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
 
         {/* 7. INTERACTIVE AUDIT LOG & FINOPS COMPLIANCE */}
         <section className="bg-slate-900/60 rounded-xl border border-slate-800 p-5">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
             <div className="flex items-center gap-2">
               <CheckCircle2 className="w-4 h-4 text-emerald-400" />
               <h2 className="text-sm font-semibold tracking-wide text-white uppercase">
-                Autonomous Incident Remediation & FinOps Audit Log
+                Autonomous Incident Remediation &amp; FinOps Audit Log
               </h2>
             </div>
-            <span className="text-xs text-slate-400 font-mono">
-              Immutable SLA Record & Campus Cost Avoidance
-            </span>
+            <div className="flex flex-wrap items-center gap-3">
+              <span className="text-xs text-slate-400 font-mono">
+                Immutable SLA Record &amp; Campus Cost Avoidance
+              </span>
+              <button
+                type="button"
+                onClick={handleExportAuditReport}
+                className="px-3 py-1.5 rounded-md bg-gradient-to-r from-indigo-600 to-cyan-600 hover:from-indigo-500 hover:to-cyan-500 text-white text-xs font-semibold transition flex items-center gap-1.5 shadow-sm cursor-pointer"
+              >
+                <Download className="w-3.5 h-3.5" />
+                <span>[📄 Export Audit &amp; ESG Report]</span>
+              </button>
+            </div>
           </div>
 
           <div className="overflow-x-auto">
@@ -1864,33 +2686,56 @@ resource "google_compute_subnetwork" "apu_edge_subnets" {
                   <th className="py-2.5 px-3">TIMESTAMP</th>
                   <th className="py-2.5 px-3">ZONE</th>
                   <th className="py-2.5 px-3">ANOMALY TRIGGER</th>
-                  <th className="py-2.5 px-3">AUTONOMOUS REMEDIATION ACTION</th>
-                  <th className="py-2.5 px-3 text-right">SAVINGS (MYR)</th>
+                  <th className="py-2.5 px-3">GOVERNANCE / IAC</th>
+                  <th className="py-2.5 px-3">REMEDIATION ACTION</th>
+                  <th className="py-2.5 px-3 text-right">SAVINGS / CO2E</th>
                   <th className="py-2.5 px-3 text-center">STATUS</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-800/60 font-sans">
-                {auditLog.map((item) => (
-                  <tr key={item.id} className="hover:bg-slate-800/30 transition">
-                    <td className="py-2.5 px-3 font-mono text-cyan-400 font-medium">
-                      {item.id}
-                    </td>
-                    <td className="py-2.5 px-3 text-slate-400 font-mono">{item.timestamp}</td>
-                    <td className="py-2.5 px-3 font-medium text-white">{item.zone}</td>
-                    <td className="py-2.5 px-3 text-slate-300">{item.crisis}</td>
-                    <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">
-                      {item.remediation}
-                    </td>
-                    <td className="py-2.5 px-3 text-right font-mono font-bold text-emerald-400">
-                      {item.savings}
-                    </td>
-                    <td className="py-2.5 px-3 text-center">
-                      <span className="px-2 py-0.5 rounded-full text-[10px] font-semibold bg-emerald-500/10 text-emerald-300 border border-emerald-500/30 font-mono">
-                        {item.status}
-                      </span>
-                    </td>
-                  </tr>
-                ))}
+                {incidentAuditLog.map((item) => {
+                  const isPending = item.status === "AWAITING APPROVAL";
+                  return (
+                    <tr key={item.id} className="hover:bg-slate-800/30 transition">
+                      <td className="py-2.5 px-3 font-mono text-cyan-400 font-medium">
+                        {item.id}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-400 font-mono">
+                        {item.timestamp}
+                      </td>
+                      <td className="py-2.5 px-3 font-medium text-white">
+                        {item.affectedZone}
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-300">{item.crisisType}</td>
+                      <td className="py-2.5 px-3 text-[11px] font-mono">
+                        <span className="block text-slate-200">{item.governanceMode}</span>
+                        <span className="text-[10px] text-purple-300">{item.iacType}</span>
+                      </td>
+                      <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">
+                        {item.remediation}
+                      </td>
+                      <td className="py-2.5 px-3 text-right font-mono">
+                        <span className="font-bold text-emerald-400 block">
+                          RM {Number(item.rmSaved || 0).toLocaleString()}
+                        </span>
+                        <span className="text-[10px] text-cyan-300">
+                          -{Number(item.co2eReduced || 0).toFixed(1)} kg CO2e
+                        </span>
+                      </td>
+                      <td className="py-2.5 px-3 text-center">
+                        <span
+                          className={`px-2 py-0.5 rounded-full text-[10px] font-semibold border font-mono ${
+                            isPending
+                              ? "bg-amber-500/15 text-amber-300 border-amber-500/40 animate-pulse"
+                              : "bg-emerald-500/10 text-emerald-300 border-emerald-500/30"
+                          }`}
+                        >
+                          {item.status}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

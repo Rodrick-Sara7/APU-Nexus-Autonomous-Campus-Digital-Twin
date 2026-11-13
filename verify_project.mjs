@@ -295,6 +295,87 @@ async function runVerification() {
   }
   console.log("  ✓ Verified POST /api/iot RESET cleanly restores nominal state.");
 
+  // 8. Final Hackathon Winning Polish Verification (HITL, Voice, Open-Meteo, Commander, Export)
+  console.log("\n[CHECK 8] Verifying 5 Hackathon Winning Polish features...");
+  if (typeof agentModule.answerCommanderQuery !== "function") {
+    throw new Error("CRITICAL: answerCommanderQuery is not exported from lib/gemini_agent.js");
+  }
+
+  const commanderPrompts = [
+    "Which campus zone has the highest carbon & power load right now?",
+    "Generate an executive risk & FinOps summary for campus IT",
+    "Explain how the 5-Agent pipeline mitigates CCTV & seismic threats",
+  ];
+  const sampleWeather = { temperature_2m: 31.4, relative_humidity_2m: 78 };
+
+  for (const prompt of commanderPrompts) {
+    const cmdRes = await agentRoute.POST(
+      new Request("http://localhost:3000/api/agent", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          telemetry: crisisEnergy,
+          userQuery: prompt,
+          weather: sampleWeather,
+        }),
+      })
+    );
+    const cmdData = await cmdRes.json();
+    if (cmdData.status !== "ok" || !cmdData.commander_reply || cmdData.commander_reply.length < 30) {
+      throw new Error(`CRITICAL: /api/agent userQuery failed for prompt: ${prompt}`);
+    }
+  }
+  // Ensure Crisis Energy top zone (145 kW in APU Library Level 2) is cited dynamically
+  const livePowerRes = await agentRoute.POST(
+    new Request("http://localhost:3000/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        telemetry: crisisEnergy,
+        userQuery: commanderPrompts[0],
+        weather: sampleWeather,
+      }),
+    })
+  );
+  const livePowerData = await livePowerRes.json();
+  if (!livePowerData.commander_reply.includes("APU Library Level 2") || !livePowerData.commander_reply.includes("145.0 kW")) {
+    throw new Error("CRITICAL: Ask APU-Nexus Commander reply did not cite dynamic peak load from live telemetry!");
+  }
+  console.log("  ✓ Verified POST /api/agent Ask APU-Nexus Commander responses cite live telemetry.");
+
+  // Ensure standard crisis analysis path still works when userQuery is omitted
+  const diagRes = await agentRoute.POST(
+    new Request("http://localhost:3000/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ telemetry: crisisCamera, crisisType: "CAMERA_TAMPERING" }),
+    })
+  );
+  const diagJson = await diagRes.json();
+  if (!diagJson.iac_manifest || diagJson.affected_zone !== "Server Room Core") {
+    throw new Error("CRITICAL: POST /api/agent regression on diagnosis mode!");
+  }
+  console.log("  ✓ Verified POST /api/agent 5-Agent diagnosis mode intact.");
+
+  const requiredPageContracts = [
+    "Mode: Full Autonomous (Auto-Heal)",
+    "Mode: Co-Pilot Governance (Hold for Approval)",
+    "Approve &amp; Execute Autonomous Remediation",
+    "announceNOC",
+    "speechSynthesis",
+    "https://api.open-meteo.com/v1/forecast?latitude=3.0554&longitude=101.7005&current=temperature_2m,relative_humidity_2m",
+    "APU Bukit Jalil Live Ambient:",
+    "Export Audit &amp; ESG Report",
+    "APU-Nexus-Compliance-Report.md",
+    "incidentAuditLog",
+  ];
+  for (const snippet of requiredPageContracts) {
+    if (!pageContent.includes(snippet)) {
+      throw new Error(`CRITICAL: Missing required Hackathon Polish feature snippet in app/page.jsx: ${snippet}`);
+    }
+  }
+  console.log("  ✓ Verified HITL Co-Pilot Governance, Voice NOC, Open-Meteo Weather, Commander Bar, and Audit Export in app/page.jsx.");
+
   console.log("\n====================================================================");
   console.log("ALL MASTER VERIFICATION CHECKS PASSED (100% HEALTHY)");
   console.log("====================================================================");
